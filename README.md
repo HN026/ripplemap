@@ -1,11 +1,15 @@
 # Ripplemap
 
-A local developer tool for reporting the **observed** downstream impact of library
-API changes using semantic indexes. Initial ecosystem: TypeScript; implementation:
-Rust. This repository currently contains the Milestone 1 semantic foundation proof.
-The Rust library and CLI begin in Milestone 2.
+Ripplemap is a local developer tool for investigating the **observed** downstream
+impact of library API changes using SCIP semantic indexes. Symbol identities
+include package names and exact versions, so references are matched by semantic
+identity rather than function names.
 
-## Reproduce the semantic proof
+The included TypeScript demo checks a library and two consumers. It shows which
+consumer references a particular library function, with source locations, while
+excluding an unrelated function with the same name.
+
+## Run the demo
 
 Prerequisite: npm and a Node version capable of installing the pinned tooling.
 `npm ci` installs Node 24.22.2 locally along with the locked indexer and compiler.
@@ -21,9 +25,8 @@ between the library definition and the importing consumer, including an aliased
 call, while excluding the retained-only consumer and an unrelated same-named
 function. It also checks the expected source ranges and version-specific identity.
 No network or index generation is involved in the check itself after installation.
-Normal Rust tests in later milestones will use these same checked-in indexes.
 
-## Regenerate indexes (explicit manual acceptance)
+## Compile the fixture and regenerate indexes
 
 From the repository root, after `npm ci`:
 
@@ -47,13 +50,7 @@ Indexing is never a hidden side effect of a lookup or check.
 See [semantic findings and provenance](docs/semantic-foundation.md) for raw symbols,
 ranges, external-symbol observations, and limitations.
 
-## Milestones
-
-- [x] 1. Validate semantic joining with a real, reproducible SCIP fixture.
-- [ ] 2. Rust package, transactional SQLite ingestion, exact-symbol usages.
-- [ ] 3. Removed-symbol impact reports and evidence quality.
-- [ ] 4. Detect removed public exports from explicit base/head snapshots.
-- [ ] 5. Complete CLI documentation, demo, exit codes, and minimal CI.
+## Limitations
 
 Zero observed references are never proof that a change is safe. This fixture
 proves identity joining only; it does not establish complete consumer coverage,
