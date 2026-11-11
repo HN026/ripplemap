@@ -1,0 +1,8 @@
+{
+  "name": "@ripplemap/removed-consumer",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@ripplemap/library": "1.0.0"
+  }
+}
