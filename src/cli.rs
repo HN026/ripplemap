@@ -1,8 +1,11 @@
-use std::path::PathBuf;
+use std::{io, path::PathBuf};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use ripplemap::store::{SnapshotInput, Store};
+use ripplemap::{
+    report,
+    store::{SnapshotInput, Store},
+};
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +33,11 @@ enum Command {
         /// Successful index-generation time, RFC 3339 with time zone.
         #[arg(long)]
         indexed_at: String,
+    },
+    /// List stored repository/commit snapshots.
+    Snapshots {
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -59,6 +67,10 @@ pub fn run() -> Result<()> {
                 snapshot.references,
                 snapshot.index_digest
             );
+        }
+        Command::Snapshots { json } => {
+            let snapshots = Store::open_read_only(&cli.database)?.snapshots()?;
+            report::snapshots(&mut io::stdout().lock(), &snapshots, json)?;
         }
     }
     Ok(())

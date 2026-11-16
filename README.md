@@ -45,6 +45,24 @@ are batched in one transaction per snapshot, without accumulating the whole inde
 Oversized fields fail with an error rather than being skipped. Database schema
 version is **1**; unsupported schema versions are rejected without migration.
 
+## Inspect imported snapshots
+
+```sh
+ripplemap snapshots
+ripplemap snapshots --json
+```
+
+Snapshots are ordered by repository and commit. JSON is an array containing
+`id`, `repository`, `commit`, `indexed_at` (UTC), `indexer_name`, `indexer_version`,
+`index_digest` (hex SHA-256), and counts for `documents`, `definitions`,
+`references`, and `symbol_less_occurrences`. The last count records occurrences
+without a symbol (for example, highlighting); these are excluded from usages.
+Rows marked as definitions by SCIP are kept separately from references through
+SQLite views over the occurrence store. Snapshot IDs are local database handles;
+repository, commit, and digest describe the evidence.
+
+Listing opens an existing database read-only; a missing database is an error.
+
 ## Check the Rust implementation
 
 ```sh
