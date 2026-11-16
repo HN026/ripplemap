@@ -11,6 +11,7 @@ use ripplemap::{
     },
     store::{SnapshotInput, Store},
 };
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -43,7 +44,10 @@ fn imports_persist_and_replacement_is_atomic_and_idempotent() -> anyhow::Result<
     assert_eq!(first.indexer_version, "0.6.2");
     assert_eq!(
         first.index_digest,
-        "1ddb1aee5847859e1c03e58d1b005f1986b75f28722f1adc59c10d823bdd6b44"
+        format!(
+            "{:x}",
+            Sha256::digest(fs::read(fixture("removed-consumer"))?)
+        )
     );
     store.ingest(&fixture("removed-consumer"), &input("consumer"))?;
     assert_eq!(store.snapshots()?, vec![first.clone()]);

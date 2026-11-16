@@ -129,7 +129,7 @@ pub fn validate_path(path: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub struct Package {
     pub scheme: String,
     pub manager: Option<String>,

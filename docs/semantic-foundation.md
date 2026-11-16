@@ -36,12 +36,12 @@ absolute `file://` project root from the generation machine. Regeneration at a
 different checkout path changes that metadata and therefore the binary digest;
 the semantic assertions should still pass. The documents use relative paths.
 SCIP metadata here carries neither an exact Git commit nor a successful-index
-timestamp. Ingestion must require those explicitly in Milestone 2.
+timestamp. Import metadata must supply those explicitly.
 
 Exact installation, compilation, indexing, and checking commands are in the
 [README](../README.md). `scripts/check-semantic.mjs` decodes with the indexer's
 SCIP bindings and asserts the observations below; it is fixture tooling, not the
-future product implementation.
+Rust CLI implementation.
 
 ## Observed identity and package version
 
@@ -108,8 +108,8 @@ dynamic access, unresolved dependencies, and other package layouts remain
 unverified. In particular, declaration-file paths may differ from producer source
 paths: do not assume those identities join until a later fixture proves it.
 These indexes do not establish which definitions are public exports, complete
-consumer coverage, or runtime call behavior. No public-export diff, ingestion,
-impact command, Rust implementation, or compatibility claim is included yet.
+consumer coverage, runtime call behavior, or API compatibility. These findings
+cover the semantic fixture only; use the README for current CLI capabilities.
 
 Upstream references:
 [scip-typescript](https://github.com/sourcegraph/scip-typescript) and

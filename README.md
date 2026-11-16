@@ -6,6 +6,7 @@ include package names and exact versions, so references are matched by semantic
 identity rather than function names.
 
 The Rust CLI imports pre-generated SCIP indexes into a local SQLite database.
+Use `ingest`, `snapshots`, and `usages` to import and inspect evidence.
 Each snapshot records its repository, exact commit, successful index-generation
 time, indexer version, and SHA-256 digest. Index generation is an explicit external
 step. Ripplemap does not run an indexer during ingestion.
@@ -63,6 +64,63 @@ repository, commit, and digest describe the evidence.
 
 Listing opens an existing database read-only; a missing database is an error.
 
+## Find exact-symbol usages
+
+Quote the full SCIP symbol, including its package version and descriptors:
+
+```sh
+ripplemap usages \
+  --symbol 'scip-typescript npm @ripplemap/library 1.0.0 src/`index.ts`/removed().'
+ripplemap usages \
+  --symbol 'scip-typescript npm @ripplemap/library 1.0.0 src/`index.ts`/removed().' \
+  --json
+```
+
+With the imported `removed-consumer` fixture this returns **three references in
+one repository**: the imported name, its alias binding, and the aliased call.
+The call starts at `src/index.ts:3:23`. Definitions, the unrelated same-named
+function, and references to a different package version are excluded. Import
+occurrences count as references, not as calls.
+
+Lookup searches **all stored commits**, not just each repository's newest one.
+Reference counts include separate snapshots of the same repository; repository
+counts are distinct. Results are ordered by repository, commit, path, range, and
+symbol roles. The default display limit is 100 references; `--limit` accepts 1–1000.
+Totals remain exact when the displayed list is truncated.
+
+Package metadata comes from the SCIP symbol header, not a manifest or lockfile;
+it does not independently verify the installed dependency version. Unknown
+package components are JSON `null`. Global symbol strings are compared exactly,
+without version stripping or fuzzy matching. Local SCIP IDs are stored with their
+document scope and cannot be queried by the global-symbol command.
+
+### JSON and locations
+
+`usages --json` returns one object:
+
+| Field | Meaning |
+| --- | --- |
+| `symbol`, `package` | Raw identity and parsed `scheme`, `manager`, `name`, `version` |
+| `indexed_snapshots` | Total stored snapshots searched, including those without matches |
+| `total_references`, `observed_repositories` | Full matching reference count and distinct repository count |
+| `references` | Displayed locations with repository, commit, timestamp, digest, and snapshot ID |
+| `truncated` | Whether the display limit omitted matching references |
+| `coverage_note` | Scope of the static evidence and its safety limitation |
+
+Each reference has `path`, `start`, `end`, `position_encoding`, and `symbol_roles`.
+Start/end positions contain `line` and `column`: both are **one-based**, with an
+**exclusive end**. Columns count code units in the document's declared encoding
+(`utf-8`, `utf-16`, or `utf-32`), not rendered screen columns. For example, a UTF-16
+surrogate pair occupies two column units. SQLite preserves the original zero-based
+coordinates. A reference also carries its exact `commit`, `indexed_at`, and
+`index_digest`; no current checkout is substituted or source file opened.
+
+Machine-readable JSON goes only to stdout. Import confirmations and errors go
+to stderr. A command exits **0** when it completes, including a successful lookup
+with zero references; **1** for database, ingestion, decoding, lookup, or output
+failure; **2** for invalid CLI arguments. A reference count is not an impact exit
+status or proof of compatibility.
+
 ## Check the Rust implementation
 
 ```sh
@@ -117,6 +175,20 @@ ranges, external-symbol observations, and limitations.
 
 ## Limitations
 
-Zero observed references are never proof that a change is safe. This fixture
-proves identity joining only; it does not establish complete consumer coverage,
-public API extraction, signature compatibility, or transitive impact.
+Only exact static references in imported snapshots are supported. SCIP protocol
+version 0 is accepted, with legacy three/four-coordinate ranges and typed
+single/multiline ranges. Unspecified/unknown position encodings, malformed ranges,
+unsafe document paths, duplicate documents, and unknown top-level fields fail the
+whole import. Optional documentation, diagnostics, highlighting, and symbol
+relationships are not analyzed. An empty `external_symbols` table is valid;
+occurrences still retain full identities. External symbol information without an
+occurrence does not create a usage.
+
+Repository/commit/time metadata is supplied by the caller; Ripplemap does not
+verify it against a checkout. The source-workspace fixture is validated; packaged
+declaration-file identities and cross-version API mappings are not. References
+need not have a matching producer definition in the supplied database.
+
+Zero observed references are never proof that a change is safe. Results do not
+establish complete consumer coverage, freshness, public API compatibility, or
+transitive impact.

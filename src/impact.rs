@@ -1,0 +1,113 @@
+//! Exact occurrence lookup; no cross-version mapping or impact inference.
+
+use anyhow::{Context, Result, ensure};
+use rusqlite::params;
+use serde::Serialize;
+
+use crate::{scip, store::Store};
+
+pub const DEFAULT_LIMIT: u32 = 100;
+pub const MAX_LIMIT: u32 = 1000;
+pub const COVERAGE_NOTE: &str = "Only observed static references in stored snapshots are reported. Zero references do not prove safety or complete consumer coverage.";
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct UsageReport {
+    pub symbol: String,
+    pub package: scip::Package,
+    pub indexed_snapshots: i64,
+    pub observed_repositories: i64,
+    pub total_references: i64,
+    pub references: Vec<Usage>,
+    pub truncated: bool,
+    pub coverage_note: &'static str,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Usage {
+    pub snapshot_id: i64,
+    pub repository: String,
+    pub commit: String,
+    pub indexed_at: String,
+    pub index_digest: String,
+    pub path: String,
+    pub position_encoding: &'static str,
+    pub start: Position,
+    pub end: Position,
+    pub symbol_roles: i32,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Position {
+    pub line: u64,
+    pub column: u64,
+}
+
+const MATCHES: &str = "FROM symbol_references o
+    JOIN symbols sym ON sym.id = o.symbol_id
+    JOIN documents d ON d.id = o.document_id
+    JOIN snapshots s ON s.id = d.snapshot_id
+    WHERE sym.symbol = ?1 AND sym.scope = ''";
+
+pub fn usages(store: &Store, symbol: &str, limit: u32) -> Result<UsageReport> {
+    ensure!(
+        (1..=MAX_LIMIT).contains(&limit),
+        "reference limit must be between 1 and {MAX_LIMIT}"
+    );
+    let package = scip::package(symbol)?.context(
+        "local symbols are document-scoped; usages requires an exact global SCIP symbol",
+    )?;
+    // Counts and locations must describe the same database state during replacement.
+    let tx = store.connection.unchecked_transaction()?;
+    let indexed_snapshots = tx.query_row("SELECT count(*) FROM snapshots", [], |row| row.get(0))?;
+    let (total_references, observed_repositories): (i64, i64) = tx.query_row(
+        &format!("SELECT count(*), count(DISTINCT s.repository) {MATCHES}"),
+        [symbol],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let mut statement = tx.prepare(&format!(
+        "SELECT s.id, s.repository, s.commit_id, s.indexed_at, s.index_digest, d.path,
+         d.position_encoding, o.start_line, o.start_character, o.end_line, o.end_character, o.symbol_roles
+         {MATCHES}
+         ORDER BY s.repository, s.commit_id, d.path, o.start_line, o.start_character,
+                  o.end_line, o.end_character, o.symbol_roles LIMIT ?2"
+    ))?;
+    let mut rows = statement.query(params![symbol, limit])?;
+    let mut references = Vec::new();
+    while let Some(row) = rows.next()? {
+        let encoding: i32 = row.get(6)?;
+        let position_encoding = match encoding {
+            1 => "utf-8",
+            2 => "utf-16",
+            3 => "utf-32",
+            _ => anyhow::bail!("unsupported stored position encoding {encoding}"),
+        };
+        references.push(Usage {
+            snapshot_id: row.get(0)?,
+            repository: row.get(1)?,
+            commit: row.get(2)?,
+            indexed_at: row.get(3)?,
+            index_digest: row.get(4)?,
+            path: row.get(5)?,
+            position_encoding,
+            start: Position {
+                line: u64::from(row.get::<_, u32>(7)?) + 1,
+                column: u64::from(row.get::<_, u32>(8)?) + 1,
+            },
+            end: Position {
+                line: u64::from(row.get::<_, u32>(9)?) + 1,
+                column: u64::from(row.get::<_, u32>(10)?) + 1,
+            },
+            symbol_roles: row.get(11)?,
+        });
+    }
+    Ok(UsageReport {
+        symbol: symbol.into(),
+        package,
+        indexed_snapshots,
+        observed_repositories,
+        total_references,
+        truncated: total_references > references.len() as i64,
+        references,
+        coverage_note: COVERAGE_NOTE,
+    })
+}

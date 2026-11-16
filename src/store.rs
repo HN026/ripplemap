@@ -115,11 +115,8 @@ impl Store {
         let application: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
         let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if application == 0 && version == 0 {
-            let tables: i64 = tx.query_row(
-                "SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
-                [],
-                |r| r.get(0),
-            )?;
+            let tables: i64 =
+                tx.query_row("SELECT count(*) FROM sqlite_schema", [], |r| r.get(0))?;
             ensure!(
                 tables == 0,
                 "refusing to initialize a nonempty non-Ripplemap database"
