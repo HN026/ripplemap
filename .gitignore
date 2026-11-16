@@ -2,3 +2,5 @@ node_modules/
 target/
 *.tsbuildinfo
 .scip-typescript/
+ripplemap.sqlite3
+ripplemap.sqlite3-*
