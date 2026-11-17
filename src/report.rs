@@ -1,3 +1,5 @@
+pub mod dependencies;
+
 use std::io::Write;
 
 use anyhow::Result;

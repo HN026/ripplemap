@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, ensure};
 use rusqlite::{Connection, Transaction, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::Store;
 use crate::scip::Metadata;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
     pub id: i64,
     pub repository: String,
@@ -29,15 +29,8 @@ pub struct SnapshotInput {
 
 impl SnapshotInput {
     pub(super) fn validate(&self) -> Result<()> {
-        ensure!(
-            !self.repository.trim().is_empty() && !self.repository.contains(char::is_control),
-            "repository must be a nonempty identifier without control characters"
-        );
-        ensure!(
-            matches!(self.commit.len(), 40 | 64)
-                && self.commit.bytes().all(|b| b.is_ascii_hexdigit()),
-            "commit must be a full 40- or 64-character Git object ID, not a branch or short hash"
-        );
+        crate::repository::validate_id(&self.repository)?;
+        crate::repository::validate_commit(&self.commit)?;
         OffsetDateTime::parse(&self.indexed_at, &Rfc3339)
             .context("index generation time must be RFC 3339 with an explicit time zone")?;
         Ok(())
@@ -69,6 +62,19 @@ impl Store {
             references: row.get(9)?,
             symbol_less_occurrences: row.get(10)?,
         })
+    }
+
+    pub fn snapshot(&self, repository: &str, commit: &str) -> Result<Snapshot> {
+        crate::repository::validate_commit(commit)?;
+        self.connection
+            .query_row(
+                "SELECT id, repository, commit_id, indexed_at, indexer_name, indexer_version,
+                    index_digest, documents, definitions, references_count, symbol_less_occurrences
+             FROM snapshots WHERE repository = ?1 AND commit_id = ?2",
+                params![repository, commit.to_ascii_lowercase()],
+                Self::snapshot_row,
+            )
+            .with_context(|| format!("missing indexed snapshot for {repository:?} at {commit}"))
     }
 
     pub fn snapshots(&self) -> Result<Vec<Snapshot>> {

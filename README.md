@@ -6,15 +6,18 @@ include package names and exact versions, so references are matched by semantic
 identity rather than function names.
 
 The Rust CLI imports pre-generated SCIP indexes into a local SQLite database.
-Use `ingest`, `snapshots`, and `usages` to import and inspect evidence.
+Use `ingest`, `snapshots`, and `usages` to import and inspect semantic evidence.
+Use `repositories` and `dependencies` to register local paths and inspect committed
+npm dependency evidence.
 Each snapshot records its repository, exact commit, successful index-generation
 time, indexer version, and SHA-256 digest. Index generation is an explicit external
 step. Ripplemap does not run an indexer during ingestion.
 
 ## Install and import an index
 
-Requires Rust 1.95 or later and a C compiler for bundled SQLite. Node is needed
-only for the optional TypeScript fixture tooling.
+Requires Rust 1.95 or later and a C compiler for bundled SQLite. Git is required
+for repository registration, dependency inspection, and tests. Node is needed only
+for the optional TypeScript fixture tooling.
 
 ```sh
 cargo install --path . --locked
@@ -44,7 +47,9 @@ Memory use includes the decoded document and SQLite's bounded page cache; 8 MiB
 is an input-message limit, not a claim about peak process memory. Prepared writes
 are batched in one transaction per snapshot, without accumulating the whole index.
 Oversized fields fail with an error rather than being skipped. Database schema
-version is **1**; unsupported schema versions are rejected without migration.
+version is **2**; unsupported schema versions are rejected without migration.
+A database created by the earlier schema-1 CLI is left untouched. Select a fresh
+file with `--database`, reimport the SCIP files, and rescan dependency evidence.
 
 ## Register local repositories
 
@@ -59,7 +64,7 @@ ripplemap repositories list --json
 
 The default manifest is `ripplemap.json` (ignored by Git). Use `--manifest PATH`
 with either repository command to select another collection. Registration writes
-canonical absolute paths atomically. Repeating the same ID/path is idempotent;
+canonical absolute paths atomically; concurrent registration writers are not supported. Repeating the same ID/path is idempotent;
 conflicting IDs and duplicate paths are errors. A hand-written manifest can use
 paths relative to its own directory:
 
@@ -92,6 +97,107 @@ SQLite views over the occurrence store. Snapshot IDs are local database handles;
 repository, commit, and digest describe the evidence.
 
 Listing opens an existing database read-only; a missing database is an error.
+
+## Inspect npm dependencies
+
+`dependencies scan` requires a registered path and an already imported snapshot
+with the same repository ID and exact commit. It reads committed Git blobs from
+that revision, including the nearest npm lockfile in the path or its Git
+ancestors. It does not read dependency declarations from the working tree, install
+packages, run project scripts, or generate an index.
+
+```sh
+# Choose the full commit recorded when your SCIP index was generated.
+# indexed_commit must contain that exact Git object ID.
+ripplemap dependencies scan --repository removed-consumer \
+  --commit "$indexed_commit" --json
+ripplemap dependencies list --repository removed-consumer \
+  --commit "$indexed_commit" --json
+```
+
+Use `--manifest PATH` with `dependencies scan` to select another repository
+collection. `dependencies list` reads saved evidence without requiring the
+checkout or manifest. Scanning replaces that snapshot's dependency evidence
+transactionally; failed scans preserve previous evidence. Reimporting its SCIP
+snapshot invalidates the old dependency evidence and requires another scan.
+
+### Run the dependency demo
+
+The checked-in collection `fixtures/semantic/repositories.json` registers both
+consumers with paths relative to that manifest. From this checkout, using a fresh
+database:
+
+```sh
+demo_commit="$(git rev-parse HEAD)"
+cargo run --locked -- --database ripplemap-m3.sqlite3 ingest \
+  --scip fixtures/semantic/removed-consumer/index.scip \
+  --repository removed-consumer --commit "$demo_commit" \
+  --indexed-at 2026-11-17T15:58:29Z
+cargo run --locked -- --database ripplemap-m3.sqlite3 dependencies scan \
+  --manifest fixtures/semantic/repositories.json \
+  --repository removed-consumer --commit "$demo_commit"
+cargo run --locked -- --database ripplemap-m3.sqlite3 dependencies list \
+  --repository removed-consumer --commit "$demo_commit" --json
+```
+
+The timestamp above records the shipped fixture's successful regeneration (see
+provenance below). The demo explicitly selects this checkout's commit because
+its fixture sources were verified. For another repository, supply its recorded
+index commit and actual successful generation time; do not substitute a branch
+or assume the current checkout matches an older index.
+
+The report resolves `@ripplemap/library@1.0.0` as a direct production dependency,
+`@ripplemap/retained-consumer@1.0.0` as a direct development dependency, and
+`typescript@6.0.3` as an optional peer. It also records the retained consumer's
+transitive declarations, including the cycle back to the removed consumer.
+A declared dependency does not imply an API reference: the retained consumer's
+source still only calls the retained library function.
+
+### Dependency evidence format and scope
+
+Terminal output shows versions, relationship/kind, resolution status, file
+pointers, warnings, and SHA-256 digests. JSON contains `snapshot` (the exact stored
+SCIP snapshot metadata) and `evidence`:
+
+| Field | Meaning |
+| --- | --- |
+| `files` | Committed evidence paths and SHA-256 digests |
+| `packages` | Package names, versions, workspace flags, and lockfile locations |
+| `dependencies` | Requested names/ranges, declaring package, kind, direct flag, resolved target, status, and evidence pointers |
+| `issues` | Missing or unsupported evidence and workspace identity discrepancies |
+
+`declared_at` and every `resolved_at` entry use a Git-relative `file` and an RFC 6901
+JSON `pointer`. Resolved targets refer to `packages[].location`, retaining nested
+installation paths and distinct versions. Workspace resolution records both the
+installation link and its target. Aliases retain the requested name separately
+from the actual locked package name.
+
+`direct: true` means declared by the registered package, or by the root/workspace
+packages when registering a whole npm workspace root. Other edges are transitive.
+`kind` is `production`, `development`, `peer`, or `optional`, as declared by the
+edge's parent package; it does not classify every downstream edge as production
+or development reachability. Optional-peer metadata is retained separately.
+Development declarations of installed third-party packages are not traversed.
+Optional declarations override production declarations with the same name.
+
+Supported inputs are npm package-lock and npm-shrinkwrap versions **2 and 3**, using
+the `packages` section and nearest installation-path resolution. Shrinkwrap takes
+precedence over package-lock in the same directory. Workspace patterns support
+literal path segments and whole-segment `*`; workspace membership comes from the
+locked paths. Other patterns, package links outside declared workspaces, npm v1,
+Yarn, and pnpm are unsupported. A stale lockfile can omit an unlocked wildcard
+workspace; this inspection does not establish exhaustive workspace coverage.
+
+Resolution status is `resolved`, `unresolved`, or `unsupported`. A missing lockfile
+retains known declarations as unresolved and records missing transitive/workspace
+coverage. Missing/unsupported evidence is report data and exits 0 when inspection
+completes; malformed JSON, an unavailable exact commit, missing snapshot, Git
+failure, or storage failure exits 1. No report is saved on execution failure.
+Dependency files must be regular committed files and are capped at 32 MiB each.
+
+A resolved dependency is a lockfile fact, not proof of installed contents, version
+constraint satisfaction, peer compatibility, complete freshness, or API use.
+Source/lockfile consistency checks and compatibility status are not produced.
 
 ## Find exact-symbol usages
 
@@ -158,8 +264,9 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-Tests use the tiny checked-in SCIP files; they need no Node installation, indexer,
-or network after Cargo dependencies are installed.
+Tests use the tiny checked-in fixture and temporary local Git repositories.
+They require Git but no Node installation, indexer, or network after Cargo
+dependencies are installed.
 
 ## Validate the semantic fixture
 

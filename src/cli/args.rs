@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use ripplemap::impact;
 
-use super::repositories;
+use super::{dependencies, repositories};
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Inspect observed API references in pre-generated SCIP indexes"
+    about = "Inspect semantic references and committed npm dependency evidence"
 )]
 pub(super) struct Cli {
     #[arg(long, global = true, default_value = "ripplemap.sqlite3")]
@@ -23,6 +23,11 @@ pub(super) enum Command {
     Repositories {
         #[command(subcommand)]
         command: repositories::Command,
+    },
+    /// Inspect and list recorded npm dependency evidence.
+    Dependencies {
+        #[command(subcommand)]
+        command: dependencies::Command,
     },
     /// Atomically import or replace a repository/commit snapshot.
     Ingest {

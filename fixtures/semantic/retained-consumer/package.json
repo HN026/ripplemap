@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@ripplemap/library": "1.0.0"
+    "@ripplemap/library": "1.0.0",
+    "@ripplemap/removed-consumer": "1.0.0"
   }
 }

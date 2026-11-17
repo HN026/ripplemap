@@ -1,3 +1,5 @@
+mod support;
+
 use std::{
     path::Path,
     process::{Command, Output},
@@ -5,8 +7,6 @@ use std::{
 
 use serde_json::Value;
 use tempfile::tempdir;
-
-const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
 fn run(database: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ripplemap"))
@@ -27,6 +27,8 @@ fn success(output: &Output) {
 
 #[test]
 fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> anyhow::Result<()> {
+    let (checkout, exact_commit) = support::fixture_repository()?;
+    let commit = exact_commit.as_str();
     let dir = tempdir()?;
     let database = dir.path().join("ripplemap.sqlite3");
     let missing = run(&database, &["snapshots", "--json"]);
@@ -47,7 +49,7 @@ fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> 
                 "--repository",
                 package,
                 "--commit",
-                COMMIT,
+                commit,
                 "--indexed-at",
                 "2026-11-11T17:43:32Z",
             ],
@@ -61,7 +63,7 @@ fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> 
     let snapshots: Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(snapshots.as_array().unwrap().len(), 3);
     assert_eq!(snapshots[1]["repository"], "removed-consumer");
-    assert_eq!(snapshots[1]["commit"], COMMIT);
+    assert_eq!(snapshots[1]["commit"], commit);
     assert_eq!(snapshots[1]["references"], 6);
     let output = run(&database, &["snapshots"]);
     success(&output);
@@ -75,7 +77,7 @@ fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> 
     assert_eq!(report["observed_repositories"], 1);
     assert_eq!(report["references"][2]["start"]["line"], 3);
     assert_eq!(report["references"][2]["start"]["column"], 23);
-    assert_eq!(report["references"][2]["commit"], COMMIT);
+    assert_eq!(report["references"][2]["commit"], commit);
     assert_eq!(
         report["references"][2]["indexed_at"],
         "2026-11-11T17:43:32Z"
@@ -108,6 +110,108 @@ fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> 
     assert!(output.stdout.is_empty());
     let output = run(&database, &["usages", "--symbol", symbol, "--limit", "0"]);
     assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let manifest = dir.path().join("repositories.json");
+    let path = checkout.path().join("fixtures/semantic/removed-consumer");
+    let output = run(
+        &database,
+        &[
+            "repositories",
+            "register",
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--repository",
+            "removed-consumer",
+            "--path",
+            path.to_str().unwrap(),
+        ],
+    );
+    success(&output);
+    assert!(output.stdout.is_empty());
+    let output = run(
+        &database,
+        &[
+            "repositories",
+            "list",
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    success(&output);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stdout)?["repositories"][0]["id"],
+        "removed-consumer"
+    );
+    let output = run(
+        &database,
+        &[
+            "dependencies",
+            "scan",
+            "--manifest",
+            manifest.to_str().unwrap(),
+            "--repository",
+            "removed-consumer",
+            "--commit",
+            commit,
+            "--json",
+        ],
+    );
+    success(&output);
+    assert!(output.stderr.is_empty());
+    let captured: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(captured["snapshot"]["commit"], commit);
+    assert!(
+        captured["evidence"]["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["name"] == "@ripplemap/library"
+                && d["status"] == "resolved"
+                && d["direct"] == true)
+    );
+    checkout.close()?;
+    let output = run(
+        &database,
+        &[
+            "dependencies",
+            "list",
+            "--repository",
+            "removed-consumer",
+            "--commit",
+            commit,
+            "--json",
+        ],
+    );
+    success(&output);
+    assert!(output.stderr.is_empty());
+    assert_eq!(serde_json::from_slice::<Value>(&output.stdout)?, captured);
+    let output = run(
+        &database,
+        &[
+            "dependencies",
+            "list",
+            "--repository",
+            "removed-consumer",
+            "--commit",
+            commit,
+        ],
+    );
+    success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("separate facts"));
+    let output = run(
+        &database,
+        &[
+            "dependencies",
+            "list",
+            "--repository",
+            "missing",
+            "--commit",
+            commit,
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     Ok(())
 }

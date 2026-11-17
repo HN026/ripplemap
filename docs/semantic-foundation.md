@@ -22,6 +22,13 @@ succeeded on 2026-11-11; the decoded results were verified at
 **2026-11-11T17:43:32Z**. This is provenance for this manual acceptance run, not an
 indexer-provided timestamp or a repository commit field.
 
+The dependency fixture was extended on 2026-11-17 with development, peer, and
+transitive workspace declarations, including a dependency cycle. TypeScript
+compilation, real SCIP regeneration, and the semantic check all passed again,
+verified at **2026-11-17T15:58:29Z**. The emitted SCIP bytes and hashes below were
+unchanged. The dependency demo uses that successful run time. API source files
+still contain the same two library functions and consumer calls.
+
 The binary files are the actual indexer outputs, totaling 3,770 bytes. They have
 not been rewritten or synthesized. SHA-256 digests:
 

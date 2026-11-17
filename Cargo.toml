@@ -3,7 +3,7 @@ name = "ripplemap"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Local semantic index ingestion and exact-symbol usage lookup"
+description = "Local semantic usages and committed npm dependency evidence"
 
 [dependencies]
 anyhow = "1"

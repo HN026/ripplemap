@@ -73,6 +73,7 @@ impl RepositoryManifest {
             .with_context(|| format!("repository {id:?} is not registered"))
     }
 
+    // shortcut: registration assumes one writer, add file locking for concurrent registration.
     pub fn register(manifest_path: &Path, id: &str, path: &Path) -> Result<Self> {
         validate_id(id)?;
         let path = path.canonicalize().context("resolve repository path")?;

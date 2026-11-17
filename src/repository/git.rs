@@ -22,6 +22,7 @@ fn command(path: &Path) -> Command {
     command
         .args(["--no-optional-locks", "-C"])
         .arg(path)
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE");

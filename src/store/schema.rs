@@ -1,7 +1,7 @@
 use anyhow::{Result, ensure};
 use rusqlite::{Connection, Transaction};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const APPLICATION_ID: i64 = 0x524d4150;
 
 pub(super) fn initialize(tx: &Transaction<'_>) -> Result<()> {
@@ -28,7 +28,7 @@ pub(super) fn check(connection: &Connection) -> Result<()> {
     ensure!(application == APPLICATION_ID, "not a Ripplemap database");
     ensure!(
         version == SCHEMA_VERSION,
-        "unsupported database schema version {version}; expected {SCHEMA_VERSION}"
+        "unsupported database schema version {version}; expected {SCHEMA_VERSION}. Use a fresh database and reimport indexes; automatic migration is not supported"
     );
     Ok(())
 }

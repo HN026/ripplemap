@@ -47,3 +47,7 @@ CREATE TABLE occurrences (
 CREATE INDEX occurrences_symbol ON occurrences(symbol_id);
 CREATE VIEW definitions AS SELECT * FROM occurrences WHERE (symbol_roles & 1) != 0;
 CREATE VIEW symbol_references AS SELECT * FROM occurrences WHERE (symbol_roles & 1) = 0;
+CREATE TABLE dependency_evidence (
+    snapshot_id INTEGER PRIMARY KEY REFERENCES snapshots(id) ON DELETE CASCADE,
+    report_json TEXT NOT NULL
+);

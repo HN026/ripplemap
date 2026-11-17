@@ -4,5 +4,16 @@
   "private": true,
   "dependencies": {
     "@ripplemap/library": "1.0.0"
+  },
+  "devDependencies": {
+    "@ripplemap/retained-consumer": "1.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   }
 }

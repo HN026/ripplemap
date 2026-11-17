@@ -1,3 +1,4 @@
+mod dependencies;
 mod documents;
 mod ingest;
 mod schema;
@@ -15,7 +16,7 @@ pub struct Store {
 }
 
 impl Store {
-    /// Create an empty Ripplemap database or open schema version 1. No migrations.
+    /// Create an empty Ripplemap database or open schema version 2. No migrations.
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection =
             Connection::open(path).with_context(|| format!("open database {}", path.display()))?;
