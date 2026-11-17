@@ -1,5 +1,6 @@
 mod args;
 mod ingest;
+mod repositories;
 mod snapshots;
 mod usages;
 
@@ -12,6 +13,7 @@ use args::{Cli, Command};
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::Repositories { command } => repositories::run(command),
         Command::Ingest {
             scip,
             repository,

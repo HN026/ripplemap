@@ -4,3 +4,4 @@ target/
 .scip-typescript/
 ripplemap.sqlite3
 ripplemap.sqlite3-*
+ripplemap.json

@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use ripplemap::impact;
 
+use super::repositories;
+
 #[derive(Parser)]
 #[command(
     version,
@@ -17,6 +19,11 @@ pub(super) struct Cli {
 
 #[derive(Subcommand)]
 pub(super) enum Command {
+    /// Manage the manifest of registered local repositories.
+    Repositories {
+        #[command(subcommand)]
+        command: repositories::Command,
+    },
     /// Atomically import or replace a repository/commit snapshot.
     Ingest {
         #[arg(long)]

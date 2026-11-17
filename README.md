@@ -46,6 +46,35 @@ are batched in one transaction per snapshot, without accumulating the whole inde
 Oversized fields fail with an error rather than being skipped. Database schema
 version is **1**; unsupported schema versions are rejected without migration.
 
+## Register local repositories
+
+Registration records explicit local Git checkout or workspace paths in a JSON
+manifest. It does not generate a SCIP index, install packages, or run project code.
+
+```sh
+ripplemap repositories register --repository removed-consumer \
+  --path fixtures/semantic/removed-consumer
+ripplemap repositories list --json
+```
+
+The default manifest is `ripplemap.json` (ignored by Git). Use `--manifest PATH`
+with either repository command to select another collection. Registration writes
+canonical absolute paths atomically. Repeating the same ID/path is idempotent;
+conflicting IDs and duplicate paths are errors. A hand-written manifest can use
+paths relative to its own directory:
+
+```json
+{
+  "schema_version": 1,
+  "repositories": [
+    { "id": "consumer", "path": "./consumer" }
+  ]
+}
+```
+
+Registered paths must exist in a Git checkout. IDs are explicit identifiers and
+should match the repository identifiers supplied when importing SCIP indexes.
+
 ## Inspect imported snapshots
 
 ```sh
