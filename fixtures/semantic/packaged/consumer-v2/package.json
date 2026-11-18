@@ -1,0 +1,10 @@
+{
+  "name": "@ripplemap/packaged-consumer-v2",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ripplemap/packaged": "file:../artifacts/ripplemap-packaged-2.0.0.tgz",
+    "@ripplemap/library": "file:../../library"
+  }
+}

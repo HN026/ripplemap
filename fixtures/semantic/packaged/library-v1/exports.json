@@ -1,0 +1,116 @@
+{
+  "format_version": 1,
+  "typescript_version": "6.0.3",
+  "package": {
+    "manager": "npm",
+    "name": "@ripplemap/packaged",
+    "version": "1.0.0"
+  },
+  "entrypoint": ".",
+  "source_entry": "src/index.ts",
+  "declaration_entry": "dist/index.d.ts",
+  "files": [
+    {
+      "path": "dist/functions.d.ts",
+      "sha256": "d30031a1f364302ef29bd32dee6a9966c3dd66bbc5d9a0018c80cdb46bbdecfd"
+    },
+    {
+      "path": "dist/index.d.ts",
+      "sha256": "4bfbb9e19b082bca0cef56d92b6a7db4749c70dc512f1a95ba22a61afb51f793"
+    },
+    {
+      "path": "package.json",
+      "sha256": "100393269ab0135479bdd69696fca1e1971e63053788e38dc1bb37097e269c26"
+    },
+    {
+      "path": "src/functions.ts",
+      "sha256": "4334ed505dceaaf8506f6451941ab9bec65bcddb57438997f1c260f0f4afa026"
+    },
+    {
+      "path": "src/index.ts",
+      "sha256": "4c007d5a49fc175014807ab72c6dec89ba154b7d4aa21401effb7d51d3553be4"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "ef3efbb0946e48fc84772ddd4dd7fdcfcd9a2998cd559e6cf6533c8aa4b09e48"
+    }
+  ],
+  "exports": [
+    {
+      "name": "kept",
+      "status": "resolved",
+      "explanation": "Compiler-resolved named function export; declaration emission verified.",
+      "source": {
+        "path": "src/functions.ts",
+        "range": [
+          4,
+          16,
+          4,
+          24
+        ]
+      },
+      "declaration": {
+        "path": "dist/functions.d.ts",
+        "range": [
+          1,
+          24,
+          1,
+          32
+        ]
+      }
+    },
+    {
+      "name": "legacy",
+      "status": "resolved",
+      "explanation": "Compiler-resolved named function export; declaration emission verified.",
+      "source": {
+        "path": "src/functions.ts",
+        "range": [
+          0,
+          16,
+          0,
+          23
+        ]
+      },
+      "declaration": {
+        "path": "dist/functions.d.ts",
+        "range": [
+          0,
+          24,
+          0,
+          31
+        ]
+      }
+    },
+    {
+      "name": "retained",
+      "status": "resolved",
+      "explanation": "Compiler-resolved named function export; declaration emission verified.",
+      "source": {
+        "path": "src/functions.ts",
+        "range": [
+          4,
+          16,
+          4,
+          24
+        ]
+      },
+      "declaration": {
+        "path": "dist/functions.d.ts",
+        "range": [
+          1,
+          24,
+          1,
+          32
+        ]
+      }
+    },
+    {
+      "name": "unsupportedValue",
+      "status": "unsupported",
+      "explanation": "Only single named function declarations and their in-package aliases/re-exports are supported; default exports, values, overloads, and merged declarations are excluded.",
+      "source": null,
+      "declaration": null
+    }
+  ]
+}

@@ -309,6 +309,32 @@ Indexing is never a hidden side effect of a lookup or check.
 See [semantic findings and provenance](docs/semantic-foundation.md) for raw symbols,
 ranges, external-symbol observations, and limitations.
 
+## Validate packaged-library evidence
+
+The packaged fixture under `fixtures/semantic/packaged` includes two library
+versions, generated JavaScript/declarations, and consumers installed from real
+npm tarballs. Its public functions include aliases and re-exports. The second
+version moves and renames an implementation while retaining its public export.
+
+```sh
+npm run check:packaged
+# Explicit manual regeneration: compile, pack, install without scripts, and index.
+node scripts/regenerate-packaged.mjs
+```
+
+The check uses TypeScript 6.0.3's compiler API, validates that packaged declarations
+match source emission, and joins compiler-derived definition ranges to real SCIP
+occurrences. `provenance.json` records the generation time and index hashes.
+Regeneration changes machine-specific SCIP project-root metadata when the
+checkout path differs. Generated tarballs and installations are ignored by Git.
+
+Producer symbols use `src/*.ts`; consumer symbols use `dist/*.d.ts`. Declaration
+indexes provide the exact versioned identities referenced by the consumers.
+Public aliases can share one raw target symbol: the index alone then cannot tell
+which public alias was used. A re-exported import token can also be recorded as a
+local symbol even when its alias binding and call have global identities. The
+fixture preserves these limits rather than filling them with text matches.
+
 ## Limitations
 
 Only exact static references in imported snapshots are supported. SCIP protocol

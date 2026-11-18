@@ -1,0 +1,93 @@
+{
+  "format_version": 1,
+  "typescript_version": "6.0.3",
+  "package": {
+    "manager": "npm",
+    "name": "@ripplemap/packaged",
+    "version": "2.0.0"
+  },
+  "entrypoint": ".",
+  "source_entry": "src/index.ts",
+  "declaration_entry": "dist/index.d.ts",
+  "files": [
+    {
+      "path": "dist/api.d.ts",
+      "sha256": "d23a0f4f6740a5e6f1505a3b1174a934f3e8bb236fb80ae76b82c73665512cec"
+    },
+    {
+      "path": "dist/index.d.ts",
+      "sha256": "a063de4be60c39a4290caa2b58f230f51e5830bddbf5167652a867749aff86bb"
+    },
+    {
+      "path": "package.json",
+      "sha256": "fbcd02fe99ef9c00ac04578db9781791f5cd23656d8b51bf7a2a504bfb1af3c2"
+    },
+    {
+      "path": "src/api.ts",
+      "sha256": "3458373f113d7206b6dc174e085f6c7c9a56459a2ea777e7804f55770da701e0"
+    },
+    {
+      "path": "src/index.ts",
+      "sha256": "26f1a1e4ca69261e8a550759219dfb3efec793cb0174ed8e54aac7d73da908ef"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "ef3efbb0946e48fc84772ddd4dd7fdcfcd9a2998cd559e6cf6533c8aa4b09e48"
+    }
+  ],
+  "exports": [
+    {
+      "name": "kept",
+      "status": "resolved",
+      "explanation": "Compiler-resolved named function export; declaration emission verified.",
+      "source": {
+        "path": "src/api.ts",
+        "range": [
+          0,
+          16,
+          0,
+          22
+        ]
+      },
+      "declaration": {
+        "path": "dist/api.d.ts",
+        "range": [
+          0,
+          24,
+          0,
+          30
+        ]
+      }
+    },
+    {
+      "name": "retained",
+      "status": "resolved",
+      "explanation": "Compiler-resolved named function export; declaration emission verified.",
+      "source": {
+        "path": "src/api.ts",
+        "range": [
+          0,
+          16,
+          0,
+          22
+        ]
+      },
+      "declaration": {
+        "path": "dist/api.d.ts",
+        "range": [
+          0,
+          24,
+          0,
+          30
+        ]
+      }
+    },
+    {
+      "name": "unsupportedValue",
+      "status": "unsupported",
+      "explanation": "Only single named function declarations and their in-package aliases/re-exports are supported; default exports, values, overloads, and merged declarations are excluded.",
+      "source": null,
+      "declaration": null
+    }
+  ]
+}

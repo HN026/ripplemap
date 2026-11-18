@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-11-18T18:16:17.300Z",
+  "indexer": "scip-typescript",
+  "indexer_version": "0.6.2",
+  "typescript_version": "6.0.3",
+  "command": "node scripts/regenerate-packaged.mjs",
+  "indexes": {
+    "library-v1/source.scip": "4da23fee6fa33c7f58ac0a19cb46c604d439280003ff2f5f86fb24be0ea248f1",
+    "library-v1/declarations.scip": "5f5527e178f8e309f8f92cebf7a74d9e916204cf1fb8d4af05882a0a9b261a3d",
+    "consumer-v1/index.scip": "1c49506754293ce4ceaaf2366a9d44069f2513d0754c2ea3e5ece639371aeffb",
+    "library-v2/source.scip": "389c62c565380e439bf7ff6ce87029af8eb6938e4fb88317efa0fd3f2d8626f4",
+    "library-v2/declarations.scip": "df2b1ca6b31dcbe6e1dfd131b23c306fe278c76e34580a6200177882dc85246c",
+    "consumer-v2/index.scip": "4802d1c97303da06b18f00cfdf8072f166663a5fc3ea0d9febcdd2723628cf3c"
+  }
+}
