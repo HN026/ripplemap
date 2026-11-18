@@ -1,3 +1,4 @@
+pub mod api;
 pub mod dependencies;
 pub mod impact;
 pub mod npm;

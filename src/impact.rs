@@ -46,9 +46,27 @@ const MATCHES: &str = "FROM symbol_references o
     JOIN symbols sym ON sym.id = o.symbol_id
     JOIN documents d ON d.id = o.document_id
     JOIN snapshots s ON s.id = d.snapshot_id
-    WHERE sym.symbol = ?1 AND sym.scope = ''";
+    WHERE sym.symbol = ?1 AND sym.scope = '' AND (?2 IS NULL OR s.id = ?2)";
 
 pub fn usages(store: &Store, symbol: &str, limit: u32) -> Result<UsageReport> {
+    lookup(store, symbol, limit, None)
+}
+
+pub(crate) fn usages_in_snapshot(
+    store: &Store,
+    symbol: &str,
+    limit: u32,
+    snapshot: &crate::store::Snapshot,
+) -> Result<UsageReport> {
+    lookup(store, symbol, limit, Some(snapshot))
+}
+
+fn lookup(
+    store: &Store,
+    symbol: &str,
+    limit: u32,
+    snapshot: Option<&crate::store::Snapshot>,
+) -> Result<UsageReport> {
     ensure!(
         (1..=MAX_LIMIT).contains(&limit),
         "reference limit must be between 1 and {MAX_LIMIT}"
@@ -58,10 +76,22 @@ pub fn usages(store: &Store, symbol: &str, limit: u32) -> Result<UsageReport> {
     )?;
     // Counts and locations must describe the same database state during replacement.
     let tx = store.connection.unchecked_transaction()?;
-    let indexed_snapshots = tx.query_row("SELECT count(*) FROM snapshots", [], |row| row.get(0))?;
+    if let Some(expected) = snapshot {
+        let actual = store.snapshot(&expected.repository, &expected.commit)?;
+        ensure!(
+            actual == *expected,
+            "consumer snapshot changed during lookup"
+        );
+    }
+    let snapshot = snapshot.map(|s| s.id);
+    let indexed_snapshots = tx.query_row(
+        "SELECT count(*) FROM snapshots WHERE ?1 IS NULL OR id = ?1",
+        [snapshot],
+        |row| row.get(0),
+    )?;
     let (total_references, observed_repositories): (i64, i64) = tx.query_row(
         &format!("SELECT count(*), count(DISTINCT s.repository) {MATCHES}"),
-        [symbol],
+        params![symbol, snapshot],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let mut statement = tx.prepare(&format!(
@@ -69,9 +99,9 @@ pub fn usages(store: &Store, symbol: &str, limit: u32) -> Result<UsageReport> {
          d.position_encoding, o.start_line, o.start_character, o.end_line, o.end_character, o.symbol_roles
          {MATCHES}
          ORDER BY s.repository, s.commit_id, d.path, o.start_line, o.start_character,
-                  o.end_line, o.end_character, o.symbol_roles LIMIT ?2"
+                  o.end_line, o.end_character, o.symbol_roles LIMIT ?3"
     ))?;
-    let mut rows = statement.query(params![symbol, limit])?;
+    let mut rows = statement.query(params![symbol, snapshot, limit])?;
     let mut references = Vec::new();
     while let Some(row) = rows.next()? {
         let encoding: i32 = row.get(6)?;

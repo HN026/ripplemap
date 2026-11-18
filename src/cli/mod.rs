@@ -1,3 +1,4 @@
+mod api;
 mod args;
 mod dependencies;
 mod ingest;
@@ -14,6 +15,7 @@ use args::{Cli, Command};
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::Api { command } => api::run(&cli.database, command),
         Command::Repositories { command } => repositories::run(command),
         Command::Dependencies { command } => dependencies::run(&cli.database, command),
         Command::Ingest {

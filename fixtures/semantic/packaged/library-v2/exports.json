@@ -86,8 +86,24 @@
       "name": "unsupportedValue",
       "status": "unsupported",
       "explanation": "Only single named function declarations and their in-package aliases/re-exports are supported; default exports, values, overloads, and merged declarations are excluded.",
-      "source": null,
-      "declaration": null
+      "source": {
+        "path": "src/index.ts",
+        "range": [
+          1,
+          13,
+          1,
+          29
+        ]
+      },
+      "declaration": {
+        "path": "dist/index.d.ts",
+        "range": [
+          1,
+          21,
+          1,
+          37
+        ]
+      }
     }
   ]
 }

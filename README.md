@@ -8,7 +8,8 @@ identity rather than function names.
 The Rust CLI imports pre-generated SCIP indexes into a local SQLite database.
 Use `ingest`, `snapshots`, and `usages` to import and inspect semantic evidence.
 Use `repositories` and `dependencies` to register local paths and inspect committed
-npm dependency evidence.
+npm dependency evidence. Use `api extract`, `api resolve`, and `api bridge` to
+connect supported packaged public exports to indexed consumers.
 Each snapshot records its repository, exact commit, successful index-generation
 time, indexer version, and SHA-256 digest. Index generation is an explicit external
 step. Ripplemap does not run an indexer during ingestion.
@@ -17,7 +18,7 @@ step. Ripplemap does not run an indexer during ingestion.
 
 Requires Rust 1.95 or later and a C compiler for bundled SQLite. Git is required
 for repository registration, dependency inspection, and tests. Node is needed only
-for the optional TypeScript fixture tooling.
+for TypeScript API extraction and the optional fixture tooling.
 
 ```sh
 cargo install --path . --locked
@@ -256,6 +257,125 @@ with zero references; **1** for database, ingestion, decoding, lookup, or output
 failure; **2** for invalid CLI arguments. A reference count is not an impact exit
 status or proof of compatibility.
 
+## Resolve packaged public APIs
+
+`api extract` reads a registered package at an **explicit full Git commit**. It
+runs the supplied TypeScript compiler helper against committed files, verifies
+that checked-in declarations equal an in-memory declaration emit, and joins
+compiler-derived definition ranges to imported source and declaration SCIP
+snapshots. It does not build the checkout, install dependencies, execute project
+scripts, or generate indexes. Install the pinned tooling with `npm ci` first.
+The helper path is trusted executable code; use the supplied local helper.
+
+Prepare the library's source and generated declaration indexes separately. For
+the packaged fixture, explicit generation commands are in
+`scripts/regenerate-packaged.mjs`. Register the library package directory and
+import its two indexes with distinct repository IDs, recording the **same exact
+source commit**, actual generation time, and package version. Import consumer
+indexes separately with their own exact commits. For example, after these imports:
+
+```sh
+ripplemap repositories register --repository library-source --path /path/to/library
+ripplemap api extract --repository library-source --commit "$library_commit" \
+  --declarations-repository library-types --source-entry src/index.ts \
+  --helper scripts/extract-api.mjs --node node_modules/node/bin/node \
+  --output api-base.json
+ripplemap api resolve --api api-base.json \
+  --consumer-repository consumer --consumer-commit "$consumer_commit" \
+  --symbol 'scip-typescript npm @ripplemap/packaged 1.0.0 dist/`functions.d.ts`/removed().' \
+  --json
+```
+
+Source and declaration indexes use paths relative to the registered package.
+Both must describe the committed inputs; caller-supplied index provenance is
+trusted, as with ingestion. Missing commits, files, or snapshots are errors.
+Extraction writes the output artifact atomically after validation succeeds.
+`--manifest PATH` selects the registered collection. Extraction uses at most 256
+committed input files totaling 8 MiB: package/config files and TypeScript sources,
+including declarations. API JSON files are limited to 8 MiB.
+
+Resolution uses the exact declaration symbol and one explicitly selected consumer
+snapshot. Raw source and declaration symbols are retained. The fixture's `legacy`
+export maps to the `removed` implementation and two consumer references, including
+the call at `src/index.ts:4:23`. Its original import token has only a local SCIP
+identity, so that token is not included in global usage results. Unrelated packages
+and different versions are excluded from the resolved mapping.
+
+Public `retained` and `kept` aliases share one declaration target. Their raw
+consumer symbol cannot distinguish which public binding was used, so Ripplemap
+returns both candidates with `ambiguous` status rather than choosing one.
+
+### Explicit cross-version binding
+
+Extract a second artifact using explicitly supplied head source/declaration
+snapshots, then select a public binding to connect:
+
+```sh
+ripplemap api bridge --base api-base.json --head api-head.json \
+  --export retained --json
+```
+
+A resolved bridge requires the same npm package, root entry point, and
+compiler-verified named public export in both supplied artifacts, with unique
+SCIP definition mappings. Internal function names and paths can differ. This
+links a public contract identity across the two explicit versions; it does not
+establish signature, behavior, or implementation compatibility. Versions and raw
+symbols remain separate, and consumer usage sets are never combined implicitly.
+A missing artifact or stored snapshot is an execution error, never an empty diff.
+
+### API evidence and supported scope
+
+All mappings use these statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `resolved` | Supported compiler sites join to unique exact-version SCIP definitions; resolution also has observed consumer references |
+| `ambiguous` | Multiple definition identities or public aliases prevent selecting one mapping |
+| `unsupported` | The construct or symbol scheme is outside the supported subset |
+| `missing` | Required mapping, public binding, or observed reference is absent |
+
+Supported packages have a self-contained TypeScript root entry point, a root
+`types` declaration entry, and named exported function declarations,
+including in-package aliases and re-exports. A simple root `exports` declaration
+with `types` and `default` is accepted. TypeScript **6.0.3** and UTF-16 SCIP
+coordinates are required. Values, default exports, overloads, and merged
+constructs are recorded as unsupported. External re-exports, project references,
+extended configs, path mappings, custom type roots, `typesVersions`, subpath
+exports, and complex conditional exports are outside this subset. Unsupported
+project layouts fail extraction with an explanation. No signature comparison or
+automatic removal/impact classification is performed.
+
+API artifacts contain `producer` and `declarations` snapshot metadata, `evidence`
+(package identity, compiler version, entry points, file digests, public export
+sites), and `mappings` (statuses, explanations, raw symbols). Compiler sites are
+zero-based UTF-16 ranges with exclusive ends. Displayed usages retain the
+one-based position format documented above. Treat artifacts as trusted local
+evidence, not authenticated attestations. Resolve/bridge revalidate stored index
+metadata, digests, and definition joins; they do not rerun the compiler or inspect
+the current working tree. Replacing an index invalidates artifacts when its
+recorded metadata changes; extract again.
+
+`api resolve --json` returns status, explanation, raw symbol, package, entry point,
+producer/declaration/consumer snapshots, candidate mappings, and a bounded `usages`
+report (or null for local symbols). `api bridge --json` returns status, explanation,
+public binding, both package identities, producer snapshots, and both mappings.
+JSON goes to stdout; diagnostics go to stderr. Completed evidence results,
+including ambiguous/unsupported/missing, exit **0**; execution/output failures exit
+**1**, and invalid CLI arguments exit **2**. No impact-specific exit code is
+produced. Zero observed references never establish safety.
+
+Run the full manual CLI acceptance flow against the exact committed fixture
+revision (temporary database and artifacts are removed afterward):
+
+```sh
+node scripts/check-api-cli.mjs "$(git rev-parse 5bdb6b2)"
+```
+
+This builds the Rust binary, imports all six real indexes, extracts committed
+APIs, resolves consumers, checks alias ambiguity and an explicit version bridge,
+and verifies that a failed extraction preserves its previous artifact. Normal
+Rust tests use checked-in compiler evidence and require no Node or indexer.
+
 ## Check the Rust implementation
 
 ```sh
@@ -347,9 +467,11 @@ occurrences still retain full identities. External symbol information without an
 occurrence does not create a usage.
 
 Repository/commit/time metadata is supplied by the caller; Ripplemap does not
-verify it against a checkout. The source-workspace fixture is validated; packaged
-declaration-file identities and cross-version API mappings are not. References
-need not have a matching producer definition in the supplied database.
+verify it against a checkout during ingestion. API extraction separately reads an
+explicit committed revision and verifies compiler emission; it cannot attest
+that a caller supplied the correct index for that revision. Raw `usages` lookups
+do not require a matching producer definition. Packaged API resolution supports
+only the subset and explicit version-binding rules described above.
 
 Zero observed references are never proof that a change is safe. Results do not
 establish complete consumer coverage, freshness, public API compatibility, or

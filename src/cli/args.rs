@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use ripplemap::impact;
 
-use super::{dependencies, repositories};
+use super::{api, dependencies, repositories};
 
 #[derive(Parser)]
 #[command(
@@ -19,6 +19,11 @@ pub(super) struct Cli {
 
 #[derive(Subcommand)]
 pub(super) enum Command {
+    /// Extract and resolve supported public API identities.
+    Api {
+        #[command(subcommand)]
+        command: api::Command,
+    },
     /// Manage the manifest of registered local repositories.
     Repositories {
         #[command(subcommand)]

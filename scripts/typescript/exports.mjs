@@ -16,7 +16,7 @@ function exportsOf(program, entry) {
 function site(declarations, root) {
   if (declarations.length !== 1) return null;
   const declaration = declarations[0];
-  if (!ts.isFunctionDeclaration(declaration) || !declaration.name) return null;
+  if (!declaration.name || !ts.isIdentifier(declaration.name)) return null;
   const source = declaration.getSourceFile();
   const relative = path.relative(root, source.fileName).split(path.sep).join('/');
   if (relative.startsWith('../') || path.isAbsolute(relative)) return null;
@@ -32,7 +32,9 @@ export function publicExports(sourceProgram, sourceEntry, declarationProgram, de
   return names.map(name => {
     const sourceSite = site(source.get(name) ?? [], root);
     const declarationSite = site(declarations.get(name) ?? [], root);
-    const supported = name !== 'default' && sourceSite !== null && declarationSite !== null;
+    const sourceDeclarations = source.get(name) ?? [];
+    const typeDeclarations = declarations.get(name) ?? [];
+    const supported = name !== 'default' && sourceDeclarations.length === 1 && typeDeclarations.length === 1 && ts.isFunctionDeclaration(sourceDeclarations[0]) && ts.isFunctionDeclaration(typeDeclarations[0]) && sourceSite !== null && declarationSite !== null;
     return {
       name, status: supported ? 'resolved' : 'unsupported',
       explanation: supported ? 'Compiler-resolved named function export; declaration emission verified.' : 'Only single named function declarations and their in-package aliases/re-exports are supported; default exports, values, overloads, and merged declarations are excluded.',
