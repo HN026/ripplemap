@@ -6,6 +6,9 @@ use std::{
 
 use tempfile::TempDir;
 
+/**
+ * Run isolated fixture Git commands with a non-work test identity and disabled hooks.
+ */
 pub fn git(path: &Path, args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new("git")
         .arg("-C")
@@ -33,12 +36,18 @@ pub fn git(path: &Path, args: &[&str]) -> anyhow::Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().into())
 }
 
+/**
+ * Commit the prepared temporary fixture and return its exact revision.
+ */
 pub fn commit(path: &Path) -> anyhow::Result<String> {
     git(path, &["add", "."])?;
     git(path, &["commit", "-m", "fixture"])?;
     git(path, &["rev-parse", "HEAD"])
 }
 
+/**
+ * Create an isolated Git checkout from the shared small semantic workspace.
+ */
 pub fn fixture_repository() -> anyhow::Result<(TempDir, String)> {
     let temporary = tempfile::tempdir()?;
     let source = Path::new(env!("CARGO_MANIFEST_DIR"));

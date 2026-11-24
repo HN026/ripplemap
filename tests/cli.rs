@@ -8,6 +8,9 @@ use std::{
 use serde_json::Value;
 use tempfile::tempdir;
 
+/**
+ * Execute a CLI command against the supplied temporary database and capture its output.
+ */
 fn run(database: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ripplemap"))
         .arg("--database")
@@ -17,6 +20,9 @@ fn run(database: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+/**
+ * Require a successful CLI exit and include captured diagnostics when it fails.
+ */
 fn success(output: &Output) {
     assert!(
         output.status.success(),
@@ -26,6 +32,9 @@ fn success(output: &Output) {
 }
 
 #[test]
+/**
+ * Verify fixture cli persists indexes and reports exact usages between processes.
+ */
 fn fixture_cli_persists_indexes_and_reports_exact_usages_between_processes() -> anyhow::Result<()> {
     let (checkout, exact_commit) = support::fixture_repository()?;
     let commit = exact_commit.as_str();

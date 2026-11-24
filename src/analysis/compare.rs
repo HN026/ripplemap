@@ -38,6 +38,9 @@ pub struct Comparison {
     pub retained_exports: Vec<String>,
 }
 
+/**
+ * Compare supported public exports in deterministic order and retain evidence gaps.
+ */
 pub fn compare(base: &ApiSnapshot, head: &ApiSnapshot) -> Result<Comparison> {
     ensure!(
         base.evidence.package.manager == head.evidence.package.manager
@@ -53,74 +56,7 @@ pub fn compare(base: &ApiSnapshot, head: &ApiSnapshot) -> Result<Comparison> {
     };
     let before: BTreeMap<_, _> = base.evidence.exports.iter().map(|e| (&e.name, e)).collect();
     for (name, export) in before {
-        let mapping = base
-            .mappings
-            .iter()
-            .find(|m| &m.name == name)
-            .ok_or_else(|| anyhow::anyhow!("missing base mapping for {name:?}"))?;
-        let next = after.get(name).copied();
-        let next_mapping = head.mappings.iter().find(|m| &m.name == name);
-        if mapping.status != Status::Resolved
-            || next_mapping.is_some_and(|m| m.status != Status::Resolved)
-        {
-            result.issues.push(Issue {
-                export: name.clone(),
-                status: if mapping.status != Status::Resolved {
-                    mapping.status.clone()
-                } else {
-                    next_mapping.unwrap().status.clone()
-                },
-                explanation: "Unsupported or unresolved public definition; no automatic change classification".into(),
-            });
-            continue;
-        }
-        let kind = match next {
-            None => Some(ChangeKind::RemovedExport),
-            Some(next) => {
-                result.retained_exports.push(name.clone());
-                match (&export.signature, &next.signature) {
-                    (Some(old), Some(new)) if new.required_parameters > old.required_parameters => {
-                        Some(ChangeKind::RequiredParametersAdded)
-                    }
-                    (None, _) | (_, None) => {
-                        result.issues.push(Issue {
-                            export: name.clone(),
-                            status: Status::Unsupported,
-                            explanation: "Minimum-argument evidence unavailable; this retained binding's signature is unchecked".into(),
-                        });
-                        None
-                    }
-                    _ => None,
-                }
-            }
-        };
-        let Some(kind) = kind else { continue };
-        let symbols: BTreeSet<_> = mapping.declaration_symbols.iter().collect();
-        let candidates: Vec<_> = base
-            .mappings
-            .iter()
-            .filter(|m| m.declaration_symbols.iter().any(|s| symbols.contains(s)))
-            .map(|m| m.name.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        result.changes.push(Change {
-            export: name.clone(),
-            explanation: match kind {
-                ChangeKind::RemovedExport => "A supported named public function binding is absent from the explicit head API".into(),
-                ChangeKind::RequiredParametersAdded => "The supported function's minimum positional argument count increased; references are potential impact, not proof of a failing call".into(),
-            },
-            kind,
-            before: export.clone(),
-            after: next.cloned(),
-            mapping: mapping.clone(),
-            reference_status: if candidates.len() == 1 {
-                Status::Resolved
-            } else {
-                Status::Ambiguous
-            },
-            reference_candidates: candidates,
-        });
+        compare_export(base, head, export, after.get(name).copied(), &mut result)?;
     }
     for export in &head.evidence.exports {
         if !base.evidence.exports.iter().any(|e| e.name == export.name)
@@ -136,4 +72,103 @@ pub fn compare(base: &ApiSnapshot, head: &ApiSnapshot) -> Result<Comparison> {
     }
     result.issues.sort_by(|a, b| a.export.cmp(&b.export));
     Ok(result)
+}
+
+/**
+ * Classify one baseline binding when both supplied definition mappings are supported.
+ */
+fn compare_export(
+    base: &ApiSnapshot,
+    head: &ApiSnapshot,
+    export: &Export,
+    next: Option<&Export>,
+    result: &mut Comparison,
+) -> Result<()> {
+    let name = &export.name;
+    let mapping = base
+        .mappings
+        .iter()
+        .find(|m| &m.name == name)
+        .ok_or_else(|| anyhow::anyhow!("missing base mapping for {name:?}"))?;
+    let next_mapping = head.mappings.iter().find(|m| &m.name == name);
+    if mapping.status != Status::Resolved
+        || next_mapping.is_some_and(|m| m.status != Status::Resolved)
+    {
+        result.issues.push(Issue {
+            export: name.clone(),
+            status: if mapping.status != Status::Resolved {
+                mapping.status.clone()
+            } else {
+                next_mapping.unwrap().status.clone()
+            },
+            explanation:
+                "Unsupported or unresolved public definition; no automatic change classification"
+                    .into(),
+        });
+        return Ok(());
+    }
+    let kind = match next {
+        None => Some(ChangeKind::RemovedExport),
+        Some(next) => {
+            result.retained_exports.push(name.clone());
+            match (&export.signature, &next.signature) {
+                (Some(old), Some(new)) if new.required_parameters > old.required_parameters => {
+                    Some(ChangeKind::RequiredParametersAdded)
+                }
+                (None, _) | (_, None) => {
+                    result.issues.push(Issue {
+                            export: name.clone(),
+                            status: Status::Unsupported,
+                            explanation: "Minimum-argument evidence unavailable; this retained binding's signature is unchecked".into(),
+                        });
+                    None
+                }
+                _ => None,
+            }
+        }
+    };
+    let Some(kind) = kind else { return Ok(()) };
+    result
+        .changes
+        .push(build_change(base, export, next, mapping, kind));
+    Ok(())
+}
+
+/**
+ * Attach raw identities and all public alias candidates to a classified change.
+ */
+fn build_change(
+    base: &ApiSnapshot,
+    export: &Export,
+    next: Option<&Export>,
+    mapping: &Mapping,
+    kind: ChangeKind,
+) -> Change {
+    let name = &export.name;
+    let symbols: BTreeSet<_> = mapping.declaration_symbols.iter().collect();
+    let candidates: Vec<_> = base
+        .mappings
+        .iter()
+        .filter(|m| m.declaration_symbols.iter().any(|s| symbols.contains(s)))
+        .map(|m| m.name.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    Change {
+            export: name.clone(),
+            explanation: match kind {
+                ChangeKind::RemovedExport => "A supported named public function binding is absent from the explicit head API".into(),
+                ChangeKind::RequiredParametersAdded => "The supported function's minimum positional argument count increased; references are potential impact, not proof of a failing call".into(),
+            },
+            kind,
+            before: export.clone(),
+            after: next.cloned(),
+            mapping: mapping.clone(),
+            reference_status: if candidates.len() == 1 {
+                Status::Resolved
+            } else {
+                Status::Ambiguous
+            },
+            reference_candidates: candidates,
+        }
 }

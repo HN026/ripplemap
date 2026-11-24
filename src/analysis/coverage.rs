@@ -8,6 +8,9 @@ use rusqlite::params;
 use std::collections::BTreeSet;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+/**
+ * Describe freshness and reference coverage for one explicitly selected consumer.
+ */
 pub(super) fn inspect(
     store: &Store,
     api: &ApiSnapshot,
@@ -40,6 +43,42 @@ pub(super) fn inspect(
         "within_age_threshold"
     }
     .into();
+    let snapshot_id = snapshot.id;
+    count_references(store, api, snapshot_id, &mut coverage)?;
+    Ok(coverage)
+}
+
+/**
+ * Resolve the requested consumer commits without substituting another stored snapshot.
+ */
+pub(super) fn collect(
+    store: &Store,
+    base: &ApiSnapshot,
+    consumers: &super::ConsumerManifest,
+    now: OffsetDateTime,
+    max_age_days: u32,
+) -> Result<Vec<Coverage>> {
+    let available = store.snapshots()?;
+    let mut coverage = Vec::new();
+    for consumer in &consumers.consumers {
+        let snapshot = available
+            .iter()
+            .find(|s| s.repository == consumer.repository && s.commit == consumer.commit)
+            .cloned();
+        coverage.push(inspect(store, base, consumer, snapshot, now, max_age_days)?);
+    }
+    Ok(coverage)
+}
+
+/**
+ * Count exact baseline, deferred-version, and document-local evidence independently.
+ */
+fn count_references(
+    store: &Store,
+    api: &ApiSnapshot,
+    snapshot_id: i64,
+    coverage: &mut Coverage,
+) -> Result<()> {
     let known: BTreeSet<_> = api
         .mappings
         .iter()
@@ -52,7 +91,7 @@ pub(super) fn inspect(
            AND sym.package_manager = 'npm' AND sym.package_name = ?2
          GROUP BY sym.symbol, sym.package_version ORDER BY sym.symbol",
     )?;
-    let mut rows = statement.query(params![snapshot.id, api.evidence.package.name])?;
+    let mut rows = statement.query(params![snapshot_id, api.evidence.package.name])?;
     let mut versions = BTreeSet::new();
     while let Some(row) = rows.next()? {
         let symbol: String = row.get(0)?;
@@ -74,8 +113,8 @@ pub(super) fn inspect(
     coverage.local_references = store.connection.query_row(
         "SELECT count(*) FROM symbol_references o JOIN symbols sym ON sym.id = o.symbol_id
          JOIN documents d ON d.id = o.document_id WHERE d.snapshot_id = ?1 AND sym.scope != ''",
-        [snapshot.id],
+        [snapshot_id],
         |r| r.get(0),
     )?;
-    Ok(coverage)
+    Ok(())
 }

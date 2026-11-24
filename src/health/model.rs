@@ -12,6 +12,9 @@ pub enum Status {
 }
 
 impl Status {
+    /**
+     * Map the health outcome to its documented command exit code.
+     */
     pub fn exit_code(self) -> u8 {
         match self {
             Self::Healthy => 0,
@@ -35,6 +38,10 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /**
+     * Create a structured diagnostic with empty optional location and dependency
+     * evidence.
+     */
     pub(super) fn new(check: &str, code: &str, status: Status, message: impl Into<String>) -> Self {
         Self {
             check: check.into(),
@@ -101,64 +108,10 @@ pub struct Report {
 }
 
 impl Report {
+    /**
+     * Map the health outcome to its documented command exit code.
+     */
     pub fn exit_code(&self) -> u8 {
         self.status.exit_code()
-    }
-    pub(super) fn finish(&mut self, limit: u32) {
-        let mut installations =
-            std::collections::BTreeMap::<_, std::collections::BTreeSet<_>>::new();
-        for dependency in &self.dependencies {
-            installations
-                .entry(dependency.dependency.name.clone())
-                .or_default()
-                .insert(dependency.dependency.target.clone());
-        }
-        for dependency in &mut self.dependencies {
-            let ambiguous = installations[&dependency.dependency.name].len() > 1;
-            if ambiguous
-                && self.diagnostics.iter().any(|d| {
-                    d.dependency.as_deref() == Some(&dependency.dependency.name)
-                        && d.code.starts_with("TS")
-                })
-            {
-                dependency.diagnostics.push(Diagnostic::new("typescript_compiler", "ambiguous_installation", Status::Unknown,
-                    "Compiler finding names this package, but multiple installation paths exist; no individual copy is identified"));
-            }
-            dependency.status = self
-                .diagnostics
-                .iter()
-                .filter(|d| d.dependency.as_deref() == Some(&dependency.dependency.name))
-                .map(|d| {
-                    if ambiguous && d.code.starts_with("TS") {
-                        Status::Unknown
-                    } else {
-                        d.status
-                    }
-                })
-                .chain(dependency.diagnostics.iter().map(|d| d.status))
-                .max()
-                .unwrap();
-        }
-        self.status = self
-            .diagnostics
-            .iter()
-            .chain(self.dependencies.iter().flat_map(|d| &d.diagnostics))
-            .map(|d| d.status)
-            .max()
-            .unwrap_or(Status::Unknown);
-        self.diagnostics_total = self.diagnostics.len()
-            + self
-                .dependencies
-                .iter()
-                .map(|d| d.diagnostics.len())
-                .sum::<usize>();
-        let mut remaining = limit as usize;
-        self.diagnostics.truncate(remaining);
-        remaining -= self.diagnostics.len();
-        for dependency in &mut self.dependencies {
-            dependency.diagnostics.truncate(remaining);
-            remaining -= dependency.diagnostics.len();
-        }
-        self.truncated = self.diagnostics_total > limit as usize;
     }
 }

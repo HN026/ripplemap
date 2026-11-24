@@ -3,6 +3,9 @@ use rusqlite::{Transaction, params};
 
 use crate::scip::{self, DEFINITION, Document};
 
+/**
+ * Store an exact global or document-scoped identity with available package metadata.
+ */
 pub(super) fn insert_symbol(
     tx: &Transaction<'_>,
     snapshot: i64,
@@ -31,6 +34,10 @@ pub(super) fn insert_symbol(
         .query_row(params![snapshot, scope, symbol], |r| r.get(0))?)
 }
 
+/**
+ * Validate and ingest one document, deduplicating occurrences and updating snapshot
+ * counts.
+ */
 pub(super) fn insert_document(
     tx: &Transaction<'_>,
     snapshot: i64,

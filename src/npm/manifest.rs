@@ -34,6 +34,10 @@ pub(super) struct PeerMeta {
 }
 
 impl Manifest {
+    /**
+     * Enumerate declared dependency kinds in order, with optionalDependencies
+     * overriding duplicate production declarations.
+     */
     pub fn declarations(&self) -> impl Iterator<Item = (Kind, &String, &String)> {
         [
             (Kind::Production, &self.dependencies),
@@ -44,7 +48,6 @@ impl Manifest {
         .into_iter()
         .flat_map(move |(kind, entries)| {
             entries.iter().filter_map(move |(name, requirement)| {
-                // npm optionalDependencies overrides dependencies with the same key.
                 if kind == Kind::Production && self.optional_dependencies.contains_key(name) {
                     return None;
                 }
@@ -53,6 +56,9 @@ impl Manifest {
         })
     }
 
+    /**
+     * Validate the supported literal and whole-segment wildcard workspace patterns.
+     */
     pub fn workspace_patterns(&self) -> Result<Vec<String>> {
         let value = match &self.workspaces {
             Value::Null => return Ok(Vec::new()),
@@ -83,7 +89,11 @@ impl Manifest {
     }
 }
 
-// shortcut: literal segments and whole-segment * only, extend for other npm workspace patterns.
+/**
+ * Match a workspace path against supported whole-segment patterns.
+ * shortcut: literal segments and whole-segment * only, extend for other npm workspace
+ * patterns.
+ */
 pub(super) fn workspace_match(pattern: &str, path: &str) -> bool {
     let pattern: Vec<_> = pattern.split('/').collect();
     let path: Vec<_> = path.split('/').collect();

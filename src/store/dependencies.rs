@@ -5,6 +5,9 @@ use super::Store;
 use crate::{dependencies::DependencyReport, repository::validate_commit};
 
 impl Store {
+    /**
+     * Replace saved dependency evidence only while its indexed snapshot still matches.
+     */
     pub(crate) fn save_dependencies(&mut self, report: &DependencyReport) -> Result<()> {
         let tx = self
             .connection
@@ -23,6 +26,9 @@ impl Store {
         Ok(())
     }
 
+    /**
+     * Read dependency evidence for one explicitly selected repository and full commit.
+     */
     pub fn dependencies(&self, repository: &str, commit: &str) -> Result<DependencyReport> {
         validate_commit(commit)?;
         let json: String = self.connection.query_row(

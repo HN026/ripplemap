@@ -11,11 +11,17 @@ use ripplemap::{
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
+/**
+ * Write JSON evidence into the temporary fixture checkout.
+ */
 fn write(path: &Path, value: &Value) -> anyhow::Result<()> {
     fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
 }
 
+/**
+ * Import the fixture consumer index with an explicit commit and generation time.
+ */
 fn import(store: &mut Store, root: &Path, commit: &str) -> anyhow::Result<()> {
     store.ingest(
         &root.join("fixtures/semantic/removed-consumer/index.scip"),
@@ -29,6 +35,10 @@ fn import(store: &mut Store, root: &Path, commit: &str) -> anyhow::Result<()> {
 }
 
 #[test]
+/**
+ * Verify npm workspace graph resolves versions kinds and persists exact commit
+ * evidence.
+ */
 fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidence()
 -> anyhow::Result<()> {
     let (checkout, _) = support::fixture_repository()?;
@@ -43,7 +53,7 @@ fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidenc
     write(&manifest_path, &manifest)?;
     let lock_path = root.join("package-lock.json");
     let mut lock: Value = serde_json::from_slice(&fs::read(&lock_path)?)?;
-    lock["packages"]["node_modules/tiny"] = json!({"version":"1.5.0","dependencies":{"nested":"^2"},"peerDependencies":{"peer-engine":"^2"}});
+    lock["packages"]["node_modules/tiny"] = json!({"version":"1.5.0","dependencies":{"nested":"^2"},"devDependencies":{"ignored-dev":"*"},"peerDependencies":{"peer-engine":"^2"}});
     lock["packages"]["node_modules/peer-engine"] = json!({"version":"1.0.0"});
     lock["packages"]["node_modules/tiny/node_modules/peer-engine"] = json!({"version":"2.0.0"});
     lock["packages"]["node_modules/nested"] = json!({"version":"9.0.0"});
@@ -77,6 +87,12 @@ fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidenc
         .find(|d| d.name == "peer-engine")
         .unwrap();
     assert_eq!(peer.target.as_deref(), Some("node_modules/peer-engine"));
+    assert!(
+        !evidence
+            .dependencies
+            .iter()
+            .any(|d| d.name == "ignored-dev")
+    );
     let direct = evidence
         .dependencies
         .iter()
@@ -195,6 +211,10 @@ fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidenc
 }
 
 #[test]
+/**
+ * Verify missing and unsupported npm evidence is explicit and old databases are
+ * preserved.
+ */
 fn missing_and_unsupported_npm_evidence_is_explicit_and_old_databases_are_preserved()
 -> anyhow::Result<()> {
     let (checkout, _) = support::fixture_repository()?;

@@ -8,6 +8,9 @@ use super::{Snapshot, SnapshotInput, Store, documents, snapshots};
 use crate::scip::{self, Document, Metadata, SymbolInformation};
 
 impl Store {
+    /**
+     * Import one snapshot and attach the index path and requested identity to failures.
+     */
     pub fn ingest(&mut self, path: &Path, input: &SnapshotInput) -> Result<Snapshot> {
         self.ingest_inner(path, input).with_context(|| {
             format!(
@@ -19,6 +22,9 @@ impl Store {
         })
     }
 
+    /**
+     * Transactionally replace a snapshot and persist its completed index digest.
+     */
     fn ingest_inner(&mut self, path: &Path, input: &SnapshotInput) -> Result<Snapshot> {
         input.validate()?;
         let (mut reader, metadata) = open_index(path)?;
@@ -37,6 +43,9 @@ impl Store {
     }
 }
 
+/**
+ * Require a regular SCIP file with valid leading protocol/indexer metadata.
+ */
 fn open_index(path: &Path) -> Result<(scip::Reader<File>, Metadata)> {
     let file = File::open(path).with_context(|| format!("open SCIP file {}", path.display()))?;
     ensure!(
@@ -62,6 +71,9 @@ fn open_index(path: &Path) -> Result<(scip::Reader<File>, Metadata)> {
     Ok((reader, metadata))
 }
 
+/**
+ * Decode and store supported index fields within the active ingestion transaction.
+ */
 fn import_fields(tx: &Transaction<'_>, id: i64, reader: &mut scip::Reader<File>) -> Result<()> {
     while let Some((tag, bytes)) = reader.read_field()? {
         match tag {

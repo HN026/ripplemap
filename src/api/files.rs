@@ -10,6 +10,9 @@ use tempfile::NamedTempFile;
 
 use super::ApiSnapshot;
 
+/**
+ * Decode a bounded required JSON artifact, rejecting missing or nonregular inputs.
+ */
 pub fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let file = File::open(path)
         .with_context(|| format!("open required API artifact {}", path.display()))?;
@@ -23,6 +26,9 @@ pub fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&bytes).with_context(|| format!("parse API artifact {}", path.display()))
 }
 
+/**
+ * Atomically replace an API artifact only after serialization and syncing succeed.
+ */
 pub fn write(path: &Path, api: &ApiSnapshot) -> Result<()> {
     let parent = path
         .parent()

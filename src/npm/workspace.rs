@@ -18,6 +18,9 @@ pub(super) struct Workspace {
 }
 
 impl Workspace {
+    /**
+     * Resolve the supported workspace layout and committed package manifests.
+     */
     pub fn load(
         source: &mut Source<'_>,
         root: String,
@@ -68,6 +71,9 @@ impl Workspace {
     }
 }
 
+/**
+ * Find locked workspace members and record unsupported or incomplete pattern coverage.
+ */
 fn workspace_keys(
     lock: &Lockfile,
     manifest: &Manifest,
@@ -111,6 +117,9 @@ fn workspace_keys(
     workspaces
 }
 
+/**
+ * Select the registered package or all supported first-party workspace owners.
+ */
 fn owners(
     root: &str,
     selected_prefix: &str,
@@ -146,6 +155,9 @@ fn owners(
     Ok(Some(owners))
 }
 
+/**
+ * Read first-party manifests and compare their identities with lockfile metadata.
+ */
 fn load_manifests(
     source: &mut Source<'_>,
     root: &str,
@@ -197,6 +209,10 @@ fn load_manifests(
     Ok(manifests)
 }
 
+/**
+ * Record declaration and optional-peer metadata differences between manifest and
+ * lockfile.
+ */
 fn check_locked_manifest(
     manifest: &Manifest,
     locked: &Manifest,

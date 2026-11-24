@@ -13,6 +13,9 @@ pub struct DependencyReport {
     pub evidence: EvidenceSet,
 }
 
+/**
+ * Inspect dependency files at the exact indexed commit and atomically save evidence.
+ */
 pub fn scan(store: &mut Store, repository: &Repository, commit: &str) -> Result<DependencyReport> {
     let snapshot = store.snapshot(&repository.id, commit)?;
     let revision = Revision::open(&repository.path, &snapshot.commit)?;

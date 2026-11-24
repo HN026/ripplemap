@@ -8,7 +8,10 @@ pub struct Package {
     pub version: Option<String>,
 }
 
-// Only parse the package header. The complete raw symbol remains the identity.
+/**
+ * Parse only the SCIP package header; preserve the complete raw symbol as its
+ * identity.
+ */
 pub fn package(symbol: &str) -> Result<Option<Package>> {
     ensure!(!symbol.contains('\0'), "NUL in SCIP symbol");
     if let Some(id) = symbol.strip_prefix("local ") {

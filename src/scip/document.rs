@@ -3,6 +3,9 @@ use anyhow::{Result, bail, ensure};
 use super::{Occurrence, TypedRange};
 
 impl Occurrence {
+    /**
+     * Normalize supported SCIP ranges into validated zero-based exclusive coordinates.
+     */
     pub fn position(&self) -> Result<[i32; 4]> {
         let position = match &self.typed_range {
             Some(TypedRange::Single(r)) => [r.line, r.start_character, r.line, r.end_character],
@@ -27,6 +30,9 @@ impl Occurrence {
     }
 }
 
+/**
+ * Reject absolute, traversing, and noncanonical SCIP document paths.
+ */
 pub fn validate_path(path: &str) -> Result<()> {
     ensure!(
         !path.is_empty()

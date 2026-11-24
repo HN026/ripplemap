@@ -6,6 +6,9 @@ use crate::{
     store::{Snapshot, Store},
 };
 
+/**
+ * Connect one exact consumer symbol to its public API candidates and observed usages.
+ */
 pub fn resolve(
     store: &Store,
     api: &ApiSnapshot,
@@ -29,46 +32,7 @@ pub fn resolve(
         .filter(|mapping| mapping.declaration_symbols.iter().any(|s| s == raw_symbol))
         .cloned()
         .collect();
-    let (mut status, mut explanation) = match package.as_ref() {
-        None => (
-            Status::Unsupported,
-            "Local symbols require document scope and cannot be mapped by a global identity",
-        ),
-        Some(package)
-            if package.scheme != "scip-typescript" || package.manager.as_deref() != Some("npm") =>
-        {
-            (Status::Unsupported, "Unsupported SCIP package scheme")
-        }
-        Some(package)
-            if package.name.as_deref() != Some(&api.evidence.package.name)
-                || package.version.as_deref() != Some(&api.evidence.package.version) =>
-        {
-            (
-                Status::Missing,
-                "No exact package/version identity in this API snapshot; versions are never stripped",
-            )
-        }
-        Some(_) if candidates.is_empty() => (
-            Status::Missing,
-            "No public export mapping for this exact declaration symbol",
-        ),
-        Some(_) if candidates.iter().any(|m| m.status == Status::Unsupported) => (
-            Status::Unsupported,
-            "This public export construct is unsupported",
-        ),
-        Some(_)
-            if candidates.len() > 1 || candidates.iter().any(|m| m.status == Status::Ambiguous) =>
-        {
-            (
-                Status::Ambiguous,
-                "SCIP does not distinguish the public export candidates; no single export is selected",
-            )
-        }
-        Some(_) => (
-            candidates[0].status.clone(),
-            "Exact versioned declaration symbol maps to the supported public export",
-        ),
-    };
+    let (mut status, mut explanation) = classify_symbol(package.as_ref(), api, &candidates);
     let usages = if package.is_some() {
         Some(impact::usages_in_snapshot(
             store, raw_symbol, limit, &actual,
@@ -96,6 +60,10 @@ pub fn resolve(
     })
 }
 
+/**
+ * Link an explicit public binding across supplied versions without claiming
+ * compatibility.
+ */
 pub fn bridge(store: &Store, base: &ApiSnapshot, head: &ApiSnapshot, name: &str) -> Result<Bridge> {
     validate(store, base)?;
     validate(store, head)?;
@@ -155,4 +123,54 @@ pub fn bridge(store: &Store, base: &ApiSnapshot, head: &ApiSnapshot, name: &str)
         base_mapping: before,
         head_mapping: after,
     })
+}
+
+/**
+ * Classify package/version support and public alias ambiguity for a raw identity.
+ */
+fn classify_symbol(
+    package: Option<&scip::Package>,
+    api: &ApiSnapshot,
+    candidates: &[super::Mapping],
+) -> (Status, &'static str) {
+    match package {
+        None => (
+            Status::Unsupported,
+            "Local symbols require document scope and cannot be mapped by a global identity",
+        ),
+        Some(package)
+            if package.scheme != "scip-typescript" || package.manager.as_deref() != Some("npm") =>
+        {
+            (Status::Unsupported, "Unsupported SCIP package scheme")
+        }
+        Some(package)
+            if package.name.as_deref() != Some(&api.evidence.package.name)
+                || package.version.as_deref() != Some(&api.evidence.package.version) =>
+        {
+            (
+                Status::Missing,
+                "No exact package/version identity in this API snapshot; versions are never stripped",
+            )
+        }
+        Some(_) if candidates.is_empty() => (
+            Status::Missing,
+            "No public export mapping for this exact declaration symbol",
+        ),
+        Some(_) if candidates.iter().any(|m| m.status == Status::Unsupported) => (
+            Status::Unsupported,
+            "This public export construct is unsupported",
+        ),
+        Some(_)
+            if candidates.len() > 1 || candidates.iter().any(|m| m.status == Status::Ambiguous) =>
+        {
+            (
+                Status::Ambiguous,
+                "SCIP does not distinguish the public export candidates; no single export is selected",
+            )
+        }
+        Some(_) => (
+            candidates[0].status.clone(),
+            "Exact versioned declaration symbol maps to the supported public export",
+        ),
+    }
 }

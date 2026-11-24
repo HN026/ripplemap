@@ -41,6 +41,9 @@ pub(super) struct Health {
     compiler_timeout_seconds: Option<u32>,
 }
 
+/**
+ * Validate the explicit repository selection and run the selected health profile.
+ */
 pub(super) fn run(database: &Path, args: Health) -> Result<ExitCode> {
     let manifest = RepositoryManifest::load(&args.manifest)?;
     let mut selected = if let Some(selection) = args.selection {

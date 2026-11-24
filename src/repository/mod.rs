@@ -6,6 +6,9 @@ use anyhow::{Result, ensure};
 pub use git::Revision;
 pub use manifest::{Repository, RepositoryManifest};
 
+/**
+ * Reject empty repository identifiers and control characters.
+ */
 pub fn validate_id(id: &str) -> Result<()> {
     ensure!(
         !id.trim().is_empty() && !id.contains(char::is_control),
@@ -14,6 +17,9 @@ pub fn validate_id(id: &str) -> Result<()> {
     Ok(())
 }
 
+/**
+ * Require a complete hexadecimal Git object ID rather than a branch or short hash.
+ */
 pub fn validate_commit(commit: &str) -> Result<()> {
     ensure!(
         matches!(commit.len(), 40 | 64) && commit.bytes().all(|b| b.is_ascii_hexdigit()),

@@ -27,6 +27,9 @@ pub(super) enum Command {
     },
 }
 
+/**
+ * Dispatch repository registration or display the validated local collection.
+ */
 pub(super) fn run(command: Command) -> Result<()> {
     match command {
         Command::Register {

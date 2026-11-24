@@ -18,7 +18,9 @@ pub struct Store {
 }
 
 impl Store {
-    /// Create an empty Ripplemap database or open schema version 3. No migrations.
+    /**
+     * Create an empty Ripplemap database or open schema version 3 without migrations.
+     */
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection =
             Connection::open(path).with_context(|| format!("open database {}", path.display()))?;
@@ -29,7 +31,9 @@ impl Store {
         Ok(Self { connection })
     }
 
-    /// Queries must not create a missing database or mutate an existing one.
+    /**
+     * Open an existing compatible database without creating or mutating it.
+     */
     pub fn open_read_only(path: &Path) -> Result<Self> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .with_context(|| format!("open existing database {}", path.display()))?;
@@ -38,6 +42,9 @@ impl Store {
         Ok(Self { connection })
     }
 
+    /**
+     * Apply bounded cache, busy-timeout, and foreign-key settings to a connection.
+     */
     fn configure(connection: &Connection) -> Result<()> {
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.pragma_update(None, "foreign_keys", true)?;

@@ -48,10 +48,16 @@ const MATCHES: &str = "FROM symbol_references o
     JOIN snapshots s ON s.id = d.snapshot_id
     WHERE sym.symbol = ?1 AND sym.scope = '' AND (?2 IS NULL OR s.id = ?2)";
 
+/**
+ * Look up an exact global SCIP symbol across all stored indexed commits.
+ */
 pub fn usages(store: &Store, symbol: &str, limit: u32) -> Result<UsageReport> {
     lookup(store, symbol, limit, None)
 }
 
+/**
+ * Restrict exact-symbol lookup to one explicitly supplied consumer snapshot.
+ */
 pub(crate) fn usages_in_snapshot(
     store: &Store,
     symbol: &str,
@@ -61,6 +67,10 @@ pub(crate) fn usages_in_snapshot(
     lookup(store, symbol, limit, Some(snapshot))
 }
 
+/**
+ * Read matching counts and locations in one transaction so replacement cannot mix
+ * states.
+ */
 fn lookup(
     store: &Store,
     symbol: &str,
@@ -74,7 +84,6 @@ fn lookup(
     let package = scip::package(symbol)?.context(
         "local symbols are document-scoped; usages requires an exact global SCIP symbol",
     )?;
-    // Counts and locations must describe the same database state during replacement.
     let tx = store.connection.unchecked_transaction()?;
     if let Some(expected) = snapshot {
         let actual = store.snapshot(&expected.repository, &expected.commit)?;
@@ -104,31 +113,7 @@ fn lookup(
     let mut rows = statement.query(params![symbol, snapshot, limit])?;
     let mut references = Vec::new();
     while let Some(row) = rows.next()? {
-        let encoding: i32 = row.get(6)?;
-        let position_encoding = match encoding {
-            1 => "utf-8",
-            2 => "utf-16",
-            3 => "utf-32",
-            _ => anyhow::bail!("unsupported stored position encoding {encoding}"),
-        };
-        references.push(Usage {
-            snapshot_id: row.get(0)?,
-            repository: row.get(1)?,
-            commit: row.get(2)?,
-            indexed_at: row.get(3)?,
-            index_digest: row.get(4)?,
-            path: row.get(5)?,
-            position_encoding: position_encoding.into(),
-            start: Position {
-                line: u64::from(row.get::<_, u32>(7)?) + 1,
-                column: u64::from(row.get::<_, u32>(8)?) + 1,
-            },
-            end: Position {
-                line: u64::from(row.get::<_, u32>(9)?) + 1,
-                column: u64::from(row.get::<_, u32>(10)?) + 1,
-            },
-            symbol_roles: row.get(11)?,
-        });
+        references.push(usage_row(row)?);
     }
     Ok(UsageReport {
         symbol: symbol.into(),
@@ -139,5 +124,37 @@ fn lookup(
         truncated: total_references > references.len() as i64,
         references,
         coverage_note: COVERAGE_NOTE,
+    })
+}
+
+/**
+ * Decode a stored occurrence and convert zero-based positions to displayed
+ * coordinates.
+ */
+fn usage_row(row: &rusqlite::Row<'_>) -> Result<Usage> {
+    let encoding: i32 = row.get(6)?;
+    let position_encoding = match encoding {
+        1 => "utf-8",
+        2 => "utf-16",
+        3 => "utf-32",
+        _ => anyhow::bail!("unsupported stored position encoding {encoding}"),
+    };
+    Ok(Usage {
+        snapshot_id: row.get(0)?,
+        repository: row.get(1)?,
+        commit: row.get(2)?,
+        indexed_at: row.get(3)?,
+        index_digest: row.get(4)?,
+        path: row.get(5)?,
+        position_encoding: position_encoding.into(),
+        start: Position {
+            line: u64::from(row.get::<_, u32>(7)?) + 1,
+            column: u64::from(row.get::<_, u32>(8)?) + 1,
+        },
+        end: Position {
+            line: u64::from(row.get::<_, u32>(9)?) + 1,
+            column: u64::from(row.get::<_, u32>(10)?) + 1,
+        },
+        symbol_roles: row.get(11)?,
     })
 }

@@ -28,6 +28,10 @@ pub struct SnapshotInput {
 }
 
 impl SnapshotInput {
+    /**
+     * Validate snapshot repository identity, exact commit, and explicit generation
+     * timestamp.
+     */
     pub(super) fn validate(&self) -> Result<()> {
         crate::repository::validate_id(&self.repository)?;
         crate::repository::validate_commit(&self.commit)?;
@@ -38,6 +42,9 @@ impl SnapshotInput {
 }
 
 impl Store {
+    /**
+     * Read a snapshot by its local database handle within the supplied connection.
+     */
     pub(super) fn select_snapshot(connection: &Connection, id: i64) -> Result<Snapshot> {
         Ok(connection.query_row(
             "SELECT id, repository, commit_id, indexed_at, indexer_name, indexer_version,
@@ -48,6 +55,9 @@ impl Store {
         )?)
     }
 
+    /**
+     * Decode stored snapshot columns into their reusable metadata representation.
+     */
     fn snapshot_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Snapshot> {
         Ok(Snapshot {
             id: row.get(0)?,
@@ -64,6 +74,9 @@ impl Store {
         })
     }
 
+    /**
+     * Read exactly the requested repository/commit snapshot without falling back.
+     */
     pub fn snapshot(&self, repository: &str, commit: &str) -> Result<Snapshot> {
         crate::repository::validate_commit(commit)?;
         self.connection
@@ -77,6 +90,9 @@ impl Store {
             .with_context(|| format!("missing indexed snapshot for {repository:?} at {commit}"))
     }
 
+    /**
+     * List snapshot metadata deterministically by repository and commit.
+     */
     pub fn snapshots(&self) -> Result<Vec<Snapshot>> {
         let mut statement = self.connection.prepare(
             "SELECT id, repository, commit_id, indexed_at, indexer_name, indexer_version,
@@ -89,6 +105,10 @@ impl Store {
     }
 }
 
+/**
+ * Replace one snapshot identity inside the caller transaction and normalize its
+ * timestamp.
+ */
 pub(super) fn replace(
     tx: &Transaction<'_>,
     input: &SnapshotInput,

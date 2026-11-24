@@ -16,6 +16,9 @@ use tempfile::tempdir;
 
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
+/**
+ * Locate a checked-in semantic fixture relative to the Cargo package.
+ */
 fn fixture(package: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/semantic")
@@ -23,6 +26,9 @@ fn fixture(package: &str) -> PathBuf {
         .join("index.scip")
 }
 
+/**
+ * Build explicit snapshot metadata for the isolated fixture database.
+ */
 fn input(repository: &str) -> SnapshotInput {
     SnapshotInput {
         repository: repository.into(),
@@ -32,6 +38,9 @@ fn input(repository: &str) -> SnapshotInput {
 }
 
 #[test]
+/**
+ * Verify imports persist and replacement is atomic and idempotent.
+ */
 fn imports_persist_and_replacement_is_atomic_and_idempotent() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let database = dir.path().join("index.sqlite3");
@@ -87,11 +96,17 @@ fn imports_persist_and_replacement_is_atomic_and_idempotent() -> anyhow::Result<
     Ok(())
 }
 
+/**
+ * Encode one length-delimited Protobuf field for an intentionally constructed index.
+ */
 fn field(tag: u8, message: &impl Message, output: &mut Vec<u8>) {
     output.push((tag << 3) | 2);
     message.encode_length_delimited(output).unwrap();
 }
 
+/**
+ * Encode a small synthetic SCIP index for metadata and range validation checks.
+ */
 fn index(document: &Document) -> Vec<u8> {
     let mut bytes = Vec::new();
     field(
@@ -112,6 +127,9 @@ fn index(document: &Document) -> Vec<u8> {
 }
 
 #[test]
+/**
+ * Verify invalid metadata and unsupported documents leave no snapshot.
+ */
 fn invalid_metadata_and_unsupported_documents_leave_no_snapshot() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let mut store = Store::open(&dir.path().join("index.sqlite3"))?;
@@ -171,6 +189,9 @@ fn invalid_metadata_and_unsupported_documents_leave_no_snapshot() -> anyhow::Res
 }
 
 #[test]
+/**
+ * Verify ranges paths and package headers preserve scip semantics.
+ */
 fn ranges_paths_and_package_headers_preserve_scip_semantics() -> anyhow::Result<()> {
     let mut occurrence = Occurrence {
         range: vec![2, 22, 29],
@@ -223,6 +244,9 @@ fn ranges_paths_and_package_headers_preserve_scip_semantics() -> anyhow::Result<
 }
 
 #[test]
+/**
+ * Verify streaming reader rejects truncation unknown fields and oversized messages.
+ */
 fn streaming_reader_rejects_truncation_unknown_fields_and_oversized_messages() {
     for bytes in [
         vec![0x80],

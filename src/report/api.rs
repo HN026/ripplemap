@@ -4,6 +4,9 @@ use anyhow::Result;
 
 use crate::api::{Bridge, Resolution};
 
+/**
+ * Render exact API mapping candidates and their observed consumer usages.
+ */
 pub fn resolution(out: &mut impl Write, result: &Resolution, json: bool) -> Result<()> {
     if json {
         serde_json::to_writer_pretty(&mut *out, result)?;
@@ -46,6 +49,10 @@ pub fn resolution(out: &mut impl Write, result: &Resolution, json: bool) -> Resu
     Ok(())
 }
 
+/**
+ * Render both explicit public-binding identities and their cross-version resolution
+ * status.
+ */
 pub fn bridge(out: &mut impl Write, result: &Bridge, json: bool) -> Result<()> {
     if json {
         serde_json::to_writer_pretty(&mut *out, result)?;

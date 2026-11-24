@@ -4,6 +4,9 @@ use anyhow::Result;
 use rusqlite::params;
 use std::collections::BTreeSet;
 
+/**
+ * Compare committed dependency evidence and collect document/package consistency gaps.
+ */
 pub(super) fn inspect(
     store: &Store,
     revision: &Revision,
@@ -33,6 +36,20 @@ pub(super) fn inspect(
         diagnostic.evidence.push(issue.evidence.clone());
         result.push(diagnostic);
     }
+    result.extend(indexed_documents(store, revision, saved)?);
+    result.extend(referenced_packages(store, saved, &current)?);
+    Ok((current, result))
+}
+
+/**
+ * Check that every indexed document exists in the explicitly requested Git revision.
+ */
+fn indexed_documents(
+    store: &Store,
+    revision: &Revision,
+    saved: &DependencyReport,
+) -> Result<Vec<Diagnostic>> {
+    let mut result = Vec::new();
     let mut documents = store
         .connection
         .prepare("SELECT path FROM documents WHERE snapshot_id = ?1 ORDER BY path")?;
@@ -65,6 +82,19 @@ pub(super) fn inspect(
             "Semantic snapshot has no indexed documents",
         ));
     }
+    Ok(result)
+}
+
+/**
+ * Compare semantic package identities with locked versions and attach example
+ * locations.
+ */
+fn referenced_packages(
+    store: &Store,
+    saved: &DependencyReport,
+    current: &npm::EvidenceSet,
+) -> Result<Vec<Diagnostic>> {
+    let mut result = Vec::new();
     let packages: BTreeSet<_> = current
         .packages
         .iter()
@@ -109,5 +139,5 @@ pub(super) fn inspect(
         }
         result.push(diagnostic);
     }
-    Ok((current, result))
+    Ok(result)
 }

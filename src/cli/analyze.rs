@@ -47,6 +47,9 @@ pub(super) enum Runs {
     },
 }
 
+/**
+ * Load explicit analysis inputs, invoke the shared engine, and emit its outcome.
+ */
 pub(super) fn run(database: &Path, args: Analyze) -> Result<ExitCode> {
     let base = api::files::read(&args.base)?;
     let head = api::files::read(&args.head)?;
@@ -66,6 +69,9 @@ pub(super) fn run(database: &Path, args: Analyze) -> Result<ExitCode> {
     Ok(ExitCode::from(result.exit_code()))
 }
 
+/**
+ * Dispatch saved-run listing or replay without rerunning an analysis.
+ */
 pub(super) fn runs(database: &Path, command: Runs) -> Result<()> {
     let store = Store::open_read_only(database)?;
     match command {

@@ -9,6 +9,10 @@ use super::{
 };
 use crate::repository::Revision;
 
+/**
+ * Inspect exact committed npm manifests and supported lockfiles with honest coverage
+ * gaps.
+ */
 pub fn inspect(revision: &Revision) -> Result<EvidenceSet> {
     let mut source = Source::new(revision);
     let mut result = EvidenceSet::default();
@@ -65,6 +69,9 @@ pub fn inspect(revision: &Revision) -> Result<EvidenceSet> {
     finish(source, result)
 }
 
+/**
+ * Enumerate a selected Git-relative directory and each ancestor through the root.
+ */
 fn ancestors(mut directory: &str) -> Vec<&str> {
     let mut result = Vec::new();
     loop {

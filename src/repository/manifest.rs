@@ -26,6 +26,9 @@ pub struct RepositoryManifest {
 }
 
 impl RepositoryManifest {
+    /**
+     * Read a collection and validate canonical unique repository identifiers and paths.
+     */
     pub fn load(path: &Path) -> Result<Self> {
         let mut manifest: Self = serde_json::from_reader(
             File::open(path)
@@ -66,6 +69,9 @@ impl RepositoryManifest {
         Ok(manifest)
     }
 
+    /**
+     * Return a registered repository by its explicit identifier.
+     */
     pub fn repository(&self, id: &str) -> Result<&Repository> {
         self.repositories
             .iter()
@@ -73,7 +79,11 @@ impl RepositoryManifest {
             .with_context(|| format!("repository {id:?} is not registered"))
     }
 
-    // shortcut: registration assumes one writer, add file locking for concurrent registration.
+    /**
+     * Register a canonical local path and preserve idempotent collection updates.
+     * shortcut: registration assumes one writer, add file locking for concurrent
+     * registration.
+     */
     pub fn register(manifest_path: &Path, id: &str, path: &Path) -> Result<Self> {
         validate_id(id)?;
         let path = path.canonicalize().context("resolve repository path")?;
@@ -103,25 +113,32 @@ impl RepositoryManifest {
             path,
         });
         manifest.repositories.sort_by(|a, b| a.id.cmp(&b.id));
-        let destination = if manifest_path.try_exists()? {
-            manifest_path.canonicalize()?
+        manifest.save(manifest_path)?;
+        Ok(manifest)
+    }
+    /**
+     * Atomically persist and sync the collection, including its directory entry after
+     * rename.
+     */
+    fn save(&self, path: &Path) -> Result<()> {
+        let destination = if path.try_exists()? {
+            path.canonicalize()?
         } else {
-            manifest_path.to_path_buf()
+            path.to_path_buf()
         };
         let parent = destination
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         let mut temporary = NamedTempFile::new_in(parent)?;
-        serde_json::to_writer_pretty(temporary.as_file_mut(), &manifest)?;
+        serde_json::to_writer_pretty(temporary.as_file_mut(), self)?;
         writeln!(temporary)?;
         temporary.as_file().sync_all()?;
         temporary
             .persist(&destination)
             .with_context(|| format!("save repository manifest {}", destination.display()))?;
-        // Persist the containing directory entry after the atomic rename.
         #[cfg(unix)]
         fs::File::open(parent)?.sync_all()?;
-        Ok(manifest)
+        Ok(())
     }
 }

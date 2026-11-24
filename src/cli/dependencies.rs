@@ -31,6 +31,9 @@ pub(super) enum Command {
     },
 }
 
+/**
+ * Dispatch committed dependency inspection or read already saved evidence.
+ */
 pub(super) fn run(database: &Path, command: Command) -> Result<()> {
     let (result, json) = match command {
         Command::Scan {

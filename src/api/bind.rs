@@ -9,6 +9,9 @@ use crate::{
     store::{Snapshot, Store},
 };
 
+/**
+ * Join compiler export sites to exact-version SCIP definitions in a consistent read.
+ */
 pub fn bind(
     store: &Store,
     evidence: Extraction,
@@ -28,38 +31,11 @@ pub fn bind(
             && declarations.indexer_name == "scip-typescript",
         "only scip-typescript snapshots are supported for API binding"
     );
-    let mut mappings = Vec::new();
-    for export in &evidence.exports {
-        let source = symbols_at(store, &producer, export.source.as_ref(), &evidence.package)?;
-        let types = symbols_at(
-            store,
-            &declarations,
-            export.declaration.as_ref(),
-            &evidence.package,
-        )?;
-        let (status, explanation) = if export.status == Status::Unsupported {
-            (Status::Unsupported, export.explanation.clone())
-        } else if source.is_empty() || types.is_empty() {
-            (
-                Status::Missing,
-                "No matching versioned SCIP definition at a compiler-derived site".into(),
-            )
-        } else if source.len() != 1 || types.len() != 1 {
-            (
-                Status::Ambiguous,
-                "Multiple SCIP identities occur at a compiler-derived definition site".into(),
-            )
-        } else {
-            (Status::Resolved, "Source and emitted declaration joined through compiler-derived sites and exact package/version identities".into())
-        };
-        mappings.push(Mapping {
-            name: export.name.clone(),
-            status,
-            explanation,
-            producer_symbols: source,
-            declaration_symbols: types,
-        });
-    }
+    let mut mappings = evidence
+        .exports
+        .iter()
+        .map(|export| bind_export(store, export, &producer, &declarations, &evidence.package))
+        .collect::<Result<Vec<_>>>()?;
     mappings.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(ApiSnapshot {
         producer,
@@ -69,6 +45,9 @@ pub fn bind(
     })
 }
 
+/**
+ * Rebuild an artifact mapping and reject evidence that no longer matches the store.
+ */
 pub fn validate(store: &Store, api: &ApiSnapshot) -> Result<()> {
     let rebuilt = bind(
         store,
@@ -83,6 +62,9 @@ pub fn validate(store: &Store, api: &ApiSnapshot) -> Result<()> {
     Ok(())
 }
 
+/**
+ * Resolve portable snapshot metadata and reject a changed indexed revision.
+ */
 fn current_snapshot(store: &Store, expected: &Snapshot) -> Result<Snapshot> {
     let actual = store.snapshot(&expected.repository, &expected.commit)?;
     let mut normalized = expected.clone();
@@ -95,6 +77,9 @@ fn current_snapshot(store: &Store, expected: &Snapshot) -> Result<Snapshot> {
     Ok(actual)
 }
 
+/**
+ * Check the supported artifact format, compiler version, package, and entry points.
+ */
 fn validate_evidence(evidence: &Extraction) -> Result<()> {
     ensure!(
         evidence.format_version == 1 && evidence.typescript_version == "6.0.3",
@@ -110,6 +95,14 @@ fn validate_evidence(evidence: &Extraction) -> Result<()> {
     );
     scip::validate_path(&evidence.source_entry)?;
     scip::validate_path(&evidence.declaration_entry)?;
+    let files = validate_files(evidence)?;
+    validate_exports(evidence, &files)
+}
+
+/**
+ * Validate unique evidence paths and digests, including every required package input.
+ */
+fn validate_files(evidence: &Extraction) -> Result<BTreeSet<&str>> {
     let mut files = BTreeSet::new();
     for file in &evidence.files {
         scip::validate_path(&file.path)?;
@@ -133,6 +126,14 @@ fn validate_evidence(evidence: &Extraction) -> Result<()> {
             "missing API file evidence for {required:?}"
         );
     }
+    Ok(files)
+}
+
+/**
+ * Validate unique export names, supported statuses, and compiler-derived source
+ * ranges.
+ */
+fn validate_exports(evidence: &Extraction, files: &BTreeSet<&str>) -> Result<()> {
     let mut names = BTreeSet::new();
     for export in &evidence.exports {
         ensure!(
@@ -168,6 +169,9 @@ fn validate_evidence(evidence: &Extraction) -> Result<()> {
     Ok(())
 }
 
+/**
+ * Return bounded exact package/version identities at one UTF-16 definition site.
+ */
 fn symbols_at(
     store: &Store,
     snapshot: &Snapshot,
@@ -221,4 +225,40 @@ fn symbols_at(
         "too many identities at one API definition site"
     );
     Ok(symbols)
+}
+
+/**
+ * Resolve one compiler export to source and declaration identities without guessing.
+ */
+fn bind_export(
+    store: &Store,
+    export: &super::Export,
+    producer: &Snapshot,
+    declarations: &Snapshot,
+    package: &Package,
+) -> Result<Mapping> {
+    let source = symbols_at(store, producer, export.source.as_ref(), package)?;
+    let types = symbols_at(store, declarations, export.declaration.as_ref(), package)?;
+    let (status, explanation) = if export.status == Status::Unsupported {
+        (Status::Unsupported, export.explanation.clone())
+    } else if source.is_empty() || types.is_empty() {
+        (
+            Status::Missing,
+            "No matching versioned SCIP definition at a compiler-derived site".into(),
+        )
+    } else if source.len() != 1 || types.len() != 1 {
+        (
+            Status::Ambiguous,
+            "Multiple SCIP identities occur at a compiler-derived definition site".into(),
+        )
+    } else {
+        (Status::Resolved, "Source and emitted declaration joined through compiler-derived sites and exact package/version identities".into())
+    };
+    Ok(Mapping {
+        name: export.name.clone(),
+        status,
+        explanation,
+        producer_symbols: source,
+        declaration_symbols: types,
+    })
 }

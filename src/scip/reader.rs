@@ -14,6 +14,9 @@ pub struct Reader<R> {
 }
 
 impl<R: Read> Reader<R> {
+    /**
+     * Initialize a streaming index reader and its incremental SHA-256 digest.
+     */
     pub fn new(input: R) -> Self {
         Self {
             input: BufReader::new(input),
@@ -21,6 +24,9 @@ impl<R: Read> Reader<R> {
         }
     }
 
+    /**
+     * Read one bounded Protobuf varint, distinguishing clean EOF from truncation.
+     */
     fn varint(&mut self) -> Result<Option<u64>> {
         let mut value = 0;
         for shift in (0..70).step_by(7) {
@@ -39,6 +45,9 @@ impl<R: Read> Reader<R> {
         bail!("Protobuf varint overflow")
     }
 
+    /**
+     * Read one supported bounded SCIP field without accumulating the full index.
+     */
     pub fn read_field(&mut self) -> Result<Option<(u32, Vec<u8>)>> {
         let Some(key) = self.varint()? else {
             return Ok(None);
@@ -61,6 +70,9 @@ impl<R: Read> Reader<R> {
         Ok(Some((tag as u32, bytes)))
     }
 
+    /**
+     * Return the SHA-256 digest of the consumed SCIP bytes.
+     */
     pub fn finish(self) -> String {
         format!("{:x}", self.digest.finalize())
     }

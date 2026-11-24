@@ -17,6 +17,10 @@ pub struct Revision {
     commit: String,
 }
 
+/**
+ * Build a Git reader with replacement objects and ambient repository overrides
+ * disabled.
+ */
 fn command(path: &Path) -> Command {
     let mut command = Command::new("git");
     command
@@ -30,10 +34,16 @@ fn command(path: &Path) -> Command {
 }
 
 impl Revision {
+    /**
+     * Return the canonical checkout root used for committed evidence reads.
+     */
     pub(crate) fn root(&self) -> &Path {
         &self.root
     }
 
+    /**
+     * Require HEAD to match the requested commit and reject tracked/untracked changes.
+     */
     pub(crate) fn clean_checkout(&self) -> Result<bool> {
         let head = command(&self.root).args(["rev-parse", "HEAD"]).output()?;
         let status = command(&self.root)
@@ -46,6 +56,9 @@ impl Revision {
         Ok(String::from_utf8(head.stdout)?.trim() == self.commit && status.stdout.is_empty())
     }
 
+    /**
+     * Resolve and validate a local Git checkout root.
+     */
     pub fn check_checkout(path: &Path) -> Result<PathBuf> {
         let output = command(path)
             .args(["rev-parse", "--show-toplevel"])
@@ -62,6 +75,9 @@ impl Revision {
         )
     }
 
+    /**
+     * Bind a registered path to an available exact Git commit without checking it out.
+     */
     pub fn open(path: &Path, commit: &str) -> Result<Self> {
         validate_commit(commit)?;
         let root = Self::check_checkout(path)?;
@@ -84,7 +100,9 @@ impl Revision {
         })
     }
 
-    /// Enumerate tracked package files in the exact revision, never the working tree.
+    /**
+     * Enumerate tracked package files at the exact revision, never the working tree.
+     */
     pub fn files(&self) -> Result<Vec<String>> {
         let mut command = command(&self.root);
         command.args([
@@ -106,6 +124,9 @@ impl Revision {
         Ok(paths)
     }
 
+    /**
+     * Read a bounded regular committed blob, rejecting symlinks and unsafe paths.
+     */
     pub fn read(&self, path: &str) -> Result<Option<Vec<u8>>> {
         crate::scip::validate_path(path)?;
         let entry = command(&self.root)
@@ -138,6 +159,9 @@ impl Revision {
     }
 }
 
+/**
+ * Capture bounded Git output and kill/reap a reader that exceeds its input limit.
+ */
 fn bounded_output(mut command: Command) -> Result<Vec<u8>> {
     let mut child = command
         .stdout(Stdio::piped())

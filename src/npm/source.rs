@@ -12,6 +12,10 @@ pub(super) struct Source<'a> {
 }
 
 impl<'a> Source<'a> {
+    /**
+     * Initialize committed-file reading and evidence digest collection for a Git
+     * revision.
+     */
     pub fn new(revision: &'a Revision) -> Self {
         Self {
             revision,
@@ -19,6 +23,9 @@ impl<'a> Source<'a> {
         }
     }
 
+    /**
+     * Read one committed file and retain its content digest as inspection evidence.
+     */
     pub fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>> {
         let bytes = self.revision.read(path)?;
         if let Some(bytes) = &bytes {
@@ -33,6 +40,9 @@ impl<'a> Source<'a> {
         Ok(bytes)
     }
 
+    /**
+     * Decode a committed package manifest when the selected path exists.
+     */
     pub fn manifest(&mut self, path: &str) -> Result<Option<Manifest>> {
         self.read(path)?
             .map(|bytes| {
@@ -42,10 +52,13 @@ impl<'a> Source<'a> {
             .transpose()
     }
 
+    /**
+     * Find the nearest committed npm lockfile, giving shrinkwrap precedence in each
+     * directory.
+     */
     pub fn lockfile(&mut self) -> Result<Option<(String, String, Vec<u8>)>> {
         let mut directory = self.revision.prefix.clone();
         loop {
-            // npm-shrinkwrap takes precedence over package-lock in the same directory.
             for name in ["npm-shrinkwrap.json", "package-lock.json"] {
                 let file = join(&directory, name);
                 if let Some(bytes) = self.read(&file)? {
@@ -63,6 +76,9 @@ impl<'a> Source<'a> {
     }
 }
 
+/**
+ * Join Git-relative path components without adding a leading separator.
+ */
 pub(super) fn join(parent: &str, child: &str) -> String {
     if parent.is_empty() {
         child.into()

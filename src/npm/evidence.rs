@@ -1,6 +1,10 @@
 use super::{manifest::Manifest, model::*, source::Source};
 use anyhow::Result;
 
+/**
+ * Create dependency evidence from one manifest declaration and its optional-peer
+ * metadata.
+ */
 pub(super) fn declaration(
     from: &str,
     manifest: &Manifest,
@@ -30,6 +34,9 @@ pub(super) fn declaration(
     }
 }
 
+/**
+ * Retain declarations as unresolved when supported lockfile evidence is unavailable.
+ */
 pub(super) fn unresolvable(
     result: &mut EvidenceSet,
     manifest: &Manifest,
@@ -58,6 +65,9 @@ pub(super) fn unresolvable(
     }
 }
 
+/**
+ * Append a structured inspection issue with its committed file location.
+ */
 pub(super) fn issue(result: &mut EvidenceSet, code: &str, message: &str, file: &str) {
     result.issues.push(Issue {
         code: code.into(),
@@ -69,6 +79,9 @@ pub(super) fn issue(result: &mut EvidenceSet, code: &str, message: &str, file: &
     });
 }
 
+/**
+ * Attach recorded file digests and deterministically order dependencies and issues.
+ */
 pub(super) fn finish(source: Source<'_>, mut result: EvidenceSet) -> Result<EvidenceSet> {
     result.files = source.files.into_values().collect();
     result

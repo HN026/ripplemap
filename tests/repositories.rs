@@ -4,6 +4,9 @@ use ripplemap::repository::RepositoryManifest;
 use tempfile::tempdir;
 
 #[test]
+/**
+ * Verify repository manifest registration is atomic idempotent and explicit.
+ */
 fn repository_manifest_registration_is_atomic_idempotent_and_explicit() -> anyhow::Result<()> {
     let temporary = tempdir()?;
     let file = temporary.path().join("repositories.json");

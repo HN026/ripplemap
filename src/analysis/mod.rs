@@ -1,4 +1,6 @@
 mod compare;
+mod inputs;
+mod lookup;
 pub use compare::{Change, ChangeKind, Comparison, Issue, compare};
 mod coverage;
 mod model;

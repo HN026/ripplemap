@@ -58,6 +58,9 @@ pub(super) enum Command {
     },
 }
 
+/**
+ * Dispatch explicit API extraction, consumer resolution, or cross-version binding.
+ */
 pub(super) fn run(database: &Path, command: Command) -> Result<()> {
     let store = Store::open_read_only(database)?;
     match command {

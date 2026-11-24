@@ -10,6 +10,9 @@ pub enum Kind {
 }
 
 impl Kind {
+    /**
+     * Return the package.json field corresponding to a dependency kind.
+     */
     pub fn field(&self) -> &'static str {
         match self {
             Self::Production => "dependencies",
@@ -79,6 +82,9 @@ pub struct EvidenceSet {
     pub issues: Vec<Issue>,
 }
 
+/**
+ * Escape a value for use as one RFC 6901 JSON pointer segment.
+ */
 pub fn pointer(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }

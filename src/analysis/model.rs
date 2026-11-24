@@ -71,6 +71,10 @@ pub struct SavedRun {
 }
 
 impl SavedRun {
+    /**
+     * Translate observed impact and evidence gaps into the documented analysis exit
+     * code.
+     */
     pub fn exit_code(&self) -> u8 {
         if self.report.observed_repositories > 0 {
             3

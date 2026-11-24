@@ -4,6 +4,9 @@ use rusqlite::{Connection, Transaction};
 const SCHEMA_VERSION: i64 = 3;
 const APPLICATION_ID: i64 = 0x524d4150;
 
+/**
+ * Initialize only an empty database and reject unsupported existing schemas.
+ */
 pub(super) fn initialize(tx: &Transaction<'_>) -> Result<()> {
     let application: i64 = tx.pragma_query_value(None, "application_id", |r| r.get(0))?;
     let version: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -22,6 +25,9 @@ pub(super) fn initialize(tx: &Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+/**
+ * Verify the Ripplemap application ID and exact supported schema version.
+ */
 pub(super) fn check(connection: &Connection) -> Result<()> {
     let application: i64 = connection.pragma_query_value(None, "application_id", |r| r.get(0))?;
     let version: i64 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;

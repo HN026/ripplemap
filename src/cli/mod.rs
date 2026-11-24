@@ -14,6 +14,9 @@ use ripplemap::store::SnapshotInput;
 
 use args::{Cli, Command};
 
+/**
+ * Parse CLI arguments and dispatch the selected command with its exit semantics.
+ */
 pub fn run() -> Result<std::process::ExitCode> {
     let cli = Cli::parse();
     match cli.command {

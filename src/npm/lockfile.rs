@@ -26,6 +26,9 @@ pub(super) struct LockedPackage {
 }
 
 impl Lockfile {
+    /**
+     * Require a root package entry and safe canonical installation paths.
+     */
     pub fn validate(&self) -> Result<()> {
         ensure!(
             !self.packages.is_empty() && self.packages.contains_key(""),
@@ -37,6 +40,9 @@ impl Lockfile {
         Ok(())
     }
 
+    /**
+     * Build package identity and file-pointer evidence for one locked installation.
+     */
     pub fn package(&self, path: &str, file: &str, workspaces: &BTreeSet<String>) -> Package {
         let entry = &self.packages[path];
         let name = entry.manifest.name.clone().or_else(|| {
@@ -55,6 +61,10 @@ impl Lockfile {
         }
     }
 
+    /**
+     * Validate a dependency name and resolve its installation plus supported workspace
+     * links.
+     */
     pub fn resolve(
         &self,
         from: &str,
@@ -64,6 +74,14 @@ impl Lockfile {
         if !valid_name(name) {
             return Err((Status::Unsupported, "unsupported dependency name".into()));
         }
+        let path = self.installation_path(from, name)?;
+        self.follow_links(path, workspaces)
+    }
+
+    /**
+     * Search npm installation ancestors for the nearest declared package path.
+     */
+    fn installation_path(&self, from: &str, name: &str) -> Result<String, (Status, String)> {
         let mut directory = from;
         let mut found = None;
         loop {
@@ -83,12 +101,22 @@ impl Lockfile {
             }
             directory = directory.rsplit_once('/').map_or("", |(parent, _)| parent);
         }
-        let mut path = found.ok_or_else(|| {
+        found.ok_or_else(|| {
             (
                 Status::Unresolved,
                 "no matching installation path in npm lockfile".into(),
             )
-        })?;
+        })
+    }
+
+    /**
+     * Follow supported workspace links with cycle, target, and version validation.
+     */
+    fn follow_links(
+        &self,
+        mut path: String,
+        workspaces: &BTreeSet<String>,
+    ) -> Result<(String, Vec<String>), (Status, String)> {
         let mut visited = BTreeSet::new();
         let mut locations = Vec::new();
         loop {
@@ -129,6 +157,9 @@ impl Lockfile {
     }
 }
 
+/**
+ * Check package-name structure before constructing installation paths.
+ */
 fn valid_name(name: &str) -> bool {
     let parts: Vec<_> = name.split('/').collect();
     let shape = if name.starts_with('@') {
@@ -146,6 +177,9 @@ fn valid_name(name: &str) -> bool {
         })
 }
 
+/**
+ * Decode npm lockfile JSON with contextual parsing errors.
+ */
 pub(super) fn parse(bytes: &[u8]) -> Result<Lockfile> {
     serde_json::from_slice(bytes).context("parse npm lockfile")
 }

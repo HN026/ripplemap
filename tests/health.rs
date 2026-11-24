@@ -11,12 +11,18 @@ use std::{fs, path::Path, process::Command};
 use tempfile::tempdir;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+/**
+ * Select the consumer package within the temporary fixture checkout.
+ */
 fn repository(root: &Path) -> Repository {
     Repository {
         id: "consumer".into(),
         path: root.join("fixtures/semantic/removed-consumer"),
     }
 }
+/**
+ * Create the bounded default health profile used by these regression checks.
+ */
 fn options() -> Options {
     Options {
         limit: 1000,
@@ -24,6 +30,9 @@ fn options() -> Options {
         compiler: None,
     }
 }
+/**
+ * Import a consumer snapshot and scan matching committed dependency evidence.
+ */
 fn ingest(store: &mut Store, root: &Path, commit: &str) -> anyhow::Result<()> {
     store.ingest(
         &root.join("fixtures/semantic/removed-consumer/index.scip"),
@@ -36,12 +45,18 @@ fn ingest(store: &mut Store, root: &Path, commit: &str) -> anyhow::Result<()> {
     dependencies::scan(store, &repository(root), commit)?;
     Ok(())
 }
+/**
+ * Write JSON evidence into the temporary fixture checkout.
+ */
 fn write(path: &Path, value: &Value) -> anyhow::Result<()> {
     fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
 }
 
 #[test]
+/**
+ * Verify health checks npm ranges and peer environment with versioned evidence.
+ */
 fn health_checks_npm_ranges_and_peer_environment_with_versioned_evidence() -> anyhow::Result<()> {
     let (checkout, original) = support::fixture_repository()?;
     let root = checkout.path();
@@ -134,6 +149,10 @@ fn health_checks_npm_ranges_and_peer_environment_with_versioned_evidence() -> an
 }
 
 #[test]
+/**
+ * Verify health never passes missing stale or unsupported evidence and captures
+ * execution failure.
+ */
 fn health_never_passes_missing_stale_or_unsupported_evidence_and_captures_execution_failure()
 -> anyhow::Result<()> {
     let (checkout, commit) = support::fixture_repository()?;
@@ -250,6 +269,10 @@ fn health_never_passes_missing_stale_or_unsupported_evidence_and_captures_execut
 }
 
 #[test]
+/**
+ * Verify health cli reports collection profiles and exit codes without external
+ * tooling.
+ */
 fn health_cli_reports_collection_profiles_and_exit_codes_without_external_tooling()
 -> anyhow::Result<()> {
     let (checkout, commit) = support::fixture_repository()?;

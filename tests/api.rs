@@ -19,12 +19,18 @@ const LEGACY: &str =
 const RETAINED: &str =
     "scip-typescript npm @ripplemap/packaged 1.0.0 dist/`functions.d.ts`/retained().";
 
+/**
+ * Locate a checked-in semantic fixture relative to the Cargo package.
+ */
 fn fixture(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/semantic/packaged")
         .join(path)
 }
 
+/**
+ * Build explicit snapshot metadata for the isolated fixture database.
+ */
 fn input(repository: &str, commit: &str) -> SnapshotInput {
     SnapshotInput {
         repository: repository.into(),
@@ -33,6 +39,9 @@ fn input(repository: &str, commit: &str) -> SnapshotInput {
     }
 }
 
+/**
+ * Import the small real SCIP fixture into an isolated store for regression checks.
+ */
 fn setup() -> anyhow::Result<(TempDir, Store, Vec<ApiSnapshot>, Vec<Snapshot>)> {
     let directory = tempdir()?;
     let mut store = Store::open(&directory.path().join("index.sqlite3"))?;
@@ -64,6 +73,9 @@ fn setup() -> anyhow::Result<(TempDir, Store, Vec<ApiSnapshot>, Vec<Snapshot>)> 
 }
 
 #[test]
+/**
+ * Verify packaged api resolution preserves aliases versions and observed locations.
+ */
 fn packaged_api_resolution_preserves_aliases_versions_and_observed_locations() -> anyhow::Result<()>
 {
     let (_directory, mut store, apis, consumers) = setup()?;
@@ -157,6 +169,9 @@ fn packaged_api_resolution_preserves_aliases_versions_and_observed_locations() -
 }
 
 #[test]
+/**
+ * Verify api evidence does not guess missing or conflicting definition sites.
+ */
 fn api_evidence_does_not_guess_missing_or_conflicting_definition_sites() -> anyhow::Result<()> {
     let (directory, mut store, apis, consumers) = setup()?;
     let original = &apis[0];
@@ -254,6 +269,9 @@ fn api_evidence_does_not_guess_missing_or_conflicting_definition_sites() -> anyh
 }
 
 #[test]
+/**
+ * Verify api cli reports versioned evidence without node or index generation.
+ */
 fn api_cli_reports_versioned_evidence_without_node_or_index_generation() -> anyhow::Result<()> {
     let (directory, store, apis, consumers) = setup()?;
     let database = directory.path().join("index.sqlite3");
@@ -333,6 +351,9 @@ fn api_cli_reports_versioned_evidence_without_node_or_index_generation() -> anyh
 }
 
 #[test]
+/**
+ * Verify public api comparison classifies only supported changes.
+ */
 fn public_api_comparison_classifies_only_supported_changes() -> anyhow::Result<()> {
     use ripplemap::{
         analysis::{self, ChangeKind},
@@ -386,6 +407,9 @@ fn public_api_comparison_classifies_only_supported_changes() -> anyhow::Result<(
 }
 
 #[test]
+/**
+ * Verify analysis records exact inputs counts coverage and survives reimports.
+ */
 fn analysis_records_exact_inputs_counts_coverage_and_survives_reimports() -> anyhow::Result<()> {
     use ripplemap::analysis::{self, Consumer, ConsumerManifest, Options};
     let (directory, mut store, apis, consumers) = setup()?;
@@ -526,6 +550,9 @@ fn analysis_records_exact_inputs_counts_coverage_and_survives_reimports() -> any
 }
 
 #[test]
+/**
+ * Verify analysis cli persists json and distinguishes impact from failure.
+ */
 fn analysis_cli_persists_json_and_distinguishes_impact_from_failure() -> anyhow::Result<()> {
     let (directory, store, apis, consumers) = setup()?;
     let base = directory.path().join("base.json");

@@ -24,6 +24,9 @@ struct Input<'a> {
     source_entry: &'a str,
 }
 
+/**
+ * Read an exact committed package and bind the trusted compiler helper evidence.
+ */
 pub fn extract(
     store: &Store,
     repository: &Repository,
@@ -62,6 +65,10 @@ pub fn extract(
     bind(store, evidence, &producer, &declarations)
 }
 
+/**
+ * Collect bounded committed TypeScript inputs without reading the current working
+ * tree.
+ */
 fn read_package(revision: &Revision) -> Result<BTreeMap<String, String>> {
     let prefix = if revision.prefix.is_empty() {
         String::new()
@@ -97,6 +104,9 @@ fn read_package(revision: &Revision) -> Result<BTreeMap<String, String>> {
     Ok(files)
 }
 
+/**
+ * Run the explicit extraction helper and reject failed or oversized output.
+ */
 fn run_helper(input: &Input<'_>, node: &Path, helper: &Path) -> Result<Extraction> {
     let mut errors = NamedTempFile::new()?;
     let mut child = Command::new(node)

@@ -1,13 +1,15 @@
-use super::{ConsumerManifest, Finding, Options, Report, SavedRun, compare, coverage};
+use super::{ConsumerManifest, Options, Report, SavedRun, compare};
 use crate::{
-    api::{self, ApiSnapshot, Status},
-    impact, repository,
+    api::{self, ApiSnapshot},
+    impact,
     store::Store,
 };
-use anyhow::{Result, ensure};
-use std::collections::BTreeSet;
+use anyhow::Result;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+/**
+ * Coordinate validated API comparison, consumer lookup, and atomic run persistence.
+ */
 pub fn analyze(
     store: &mut Store,
     base: ApiSnapshot,
@@ -15,109 +17,15 @@ pub fn analyze(
     mut consumers: ConsumerManifest,
     options: Options,
 ) -> Result<SavedRun> {
-    ensure!(
-        (1..=impact::MAX_LIMIT).contains(&options.limit),
-        "invalid display limit"
-    );
-    ensure!(
-        options.max_index_age_days <= 36500,
-        "index age threshold exceeds 36500 days"
-    );
-    ensure!(
-        consumers.schema_version == 1 && consumers.consumers.len() <= 256,
-        "consumer manifest requires version 1 and at most 256 repositories"
-    );
-    let mut ids = BTreeSet::new();
-    for consumer in &mut consumers.consumers {
-        repository::validate_id(&consumer.repository)?;
-        repository::validate_commit(&consumer.commit)?;
-        consumer.commit.make_ascii_lowercase();
-        ensure!(
-            ids.insert(consumer.repository.clone()),
-            "select exactly one commit per consumer repository"
-        );
-        ensure!(
-            ![
-                &base.producer.repository,
-                &base.declarations.repository,
-                &head.producer.repository,
-                &head.declarations.repository
-            ]
-            .contains(&&consumer.repository),
-            "library index repositories cannot also be selected as consumers"
-        );
-    }
-    consumers.consumers.sort();
+    super::inputs::validate(&base, &head, &mut consumers, &options)?;
     api::validate(store, &base)?;
     api::validate(store, &head)?;
     let comparison = compare(&base, &head)?;
     let now = OffsetDateTime::now_utc();
-    let available = store.snapshots()?;
-    let mut coverage = Vec::new();
-    for consumer in &consumers.consumers {
-        let snapshot = available
-            .iter()
-            .find(|s| s.repository == consumer.repository && s.commit == consumer.commit)
-            .cloned();
-        coverage.push(coverage::inspect(
-            store,
-            &base,
-            consumer,
-            snapshot,
-            now,
-            options.max_index_age_days,
-        )?);
-    }
-    let mut remaining = options.limit as usize;
-    let (mut observed, mut candidates) = (BTreeSet::new(), BTreeSet::new());
-    let mut findings = Vec::new();
-    for change in &comparison.changes {
-        let ambiguous = change.reference_status != Status::Resolved;
-        let mut finding = Finding {
-            export: change.export.clone(),
-            observed_repositories: 0,
-            candidate_repositories: 0,
-            observed_references: 0,
-            candidate_references: 0,
-            references: vec![],
-            truncated: false,
-        };
-        let mut repositories = BTreeSet::new();
-        for evidence in &coverage {
-            let Some(snapshot) = &evidence.snapshot else {
-                continue;
-            };
-            for symbol in &change.mapping.declaration_symbols {
-                let usages =
-                    impact::usages_in_snapshot(store, symbol, (remaining as u32).max(1), snapshot)?;
-                if usages.total_references > 0 {
-                    repositories.insert(snapshot.repository.clone());
-                }
-                if ambiguous {
-                    finding.candidate_references += usages.total_references;
-                } else {
-                    finding.observed_references += usages.total_references;
-                }
-                let shown = usages
-                    .references
-                    .into_iter()
-                    .take(remaining)
-                    .collect::<Vec<_>>();
-                remaining -= shown.len();
-                finding.references.extend(shown);
-            }
-        }
-        finding.truncated = finding.observed_references + finding.candidate_references
-            > finding.references.len() as i64;
-        if ambiguous {
-            finding.candidate_repositories = repositories.len();
-            candidates.extend(repositories);
-        } else {
-            finding.observed_repositories = repositories.len();
-            observed.extend(repositories);
-        }
-        findings.push(finding);
-    }
+    let coverage =
+        super::coverage::collect(store, &base, &consumers, now, options.max_index_age_days)?;
+    let (findings, observed_repositories, candidate_repositories) =
+        super::lookup::findings(store, &comparison.changes, &coverage, options.limit)?;
     let report = Report {
         format_version: 1,
         analysis_version: "ripplemap-analysis-1".into(),
@@ -128,8 +36,8 @@ pub fn analyze(
         consumers,
         coverage,
         comparison,
-        observed_repositories: observed.len(),
-        candidate_repositories: candidates.len(),
+        observed_repositories,
+        candidate_repositories,
         truncated: findings.iter().any(|f| f.truncated),
         findings,
         scope_notes: vec![

@@ -2,6 +2,9 @@ use super::{DependencyResult, Diagnostic, Status};
 use crate::npm::{self, Dependency, EvidenceSet, Kind};
 use node_semver::{Range, Version};
 
+/**
+ * Evaluate each recorded dependency and attach declaration/resolution evidence.
+ */
 pub(super) fn inspect(evidence: &EvidenceSet) -> Vec<DependencyResult> {
     evidence
         .dependencies
@@ -42,6 +45,9 @@ pub(super) fn inspect(evidence: &EvidenceSet) -> Vec<DependencyResult> {
         .collect()
 }
 
+/**
+ * Check a resolved package against its declared npm identity and version requirement.
+ */
 fn evaluate(
     dependency: &Dependency,
     resolved: Option<&npm::Package>,
@@ -57,26 +63,7 @@ fn evaluate(
         );
     }
     let Some(package) = resolved else {
-        return if complete
-            && dependency.status == npm::Status::Unresolved
-            && dependency.explanation == "no matching installation path in npm lockfile"
-        {
-            if optional {
-                (
-                    Status::Healthy,
-                    "optional_absent",
-                    "Optional dependency is absent from the recorded resolution".into(),
-                )
-            } else {
-                (Status::Incompatible, "required_dependency_missing", "Required dependency or peer has no installation path in the supported lockfile".into())
-            }
-        } else {
-            (
-                Status::Unknown,
-                "unresolved_dependency",
-                dependency.explanation.clone(),
-            )
-        };
+        return missing_dependency(dependency, complete, optional);
     };
     let (name, range) = if let Some(alias) = dependency.requirement.strip_prefix("npm:") {
         match alias.rsplit_once('@') {
@@ -119,6 +106,41 @@ fn evaluate(
                 "Locked {} does not satisfy {}",
                 version, dependency.requirement
             ),
+        )
+    }
+}
+
+/**
+ * Classify an absent dependency only when the supported lockfile proves its absence.
+ */
+fn missing_dependency(
+    dependency: &Dependency,
+    complete: bool,
+    optional: bool,
+) -> (Status, &'static str, String) {
+    if complete
+        && dependency.status == npm::Status::Unresolved
+        && dependency.explanation == "no matching installation path in npm lockfile"
+    {
+        if optional {
+            (
+                Status::Healthy,
+                "optional_absent",
+                "Optional dependency is absent from the recorded resolution".into(),
+            )
+        } else {
+            (
+                Status::Incompatible,
+                "required_dependency_missing",
+                "Required dependency or peer has no installation path in the supported lockfile"
+                    .into(),
+            )
+        }
+    } else {
+        (
+            Status::Unknown,
+            "unresolved_dependency",
+            dependency.explanation.clone(),
         )
     }
 }

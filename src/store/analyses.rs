@@ -15,6 +15,9 @@ pub struct RunSummary {
 }
 
 impl Store {
+    /**
+     * Validate unchanged inputs and atomically persist an immutable analysis report.
+     */
     pub(crate) fn save_analysis(&mut self, report: Report) -> Result<SavedRun> {
         let tx = self
             .connection
@@ -62,6 +65,10 @@ impl Store {
         Ok(SavedRun { id, report })
     }
 
+    /**
+     * Read a saved run by ID without requiring its original checkouts or current
+     * indexes.
+     */
     pub fn analysis_run(&self, id: i64) -> Result<SavedRun> {
         ensure!(id > 0, "run ID must be positive");
         let json: String = self
@@ -78,6 +85,9 @@ impl Store {
         })
     }
 
+    /**
+     * List bounded recent run summaries in descending saved-run order.
+     */
     pub fn analysis_runs(&self, limit: u32) -> Result<Vec<RunSummary>> {
         ensure!(
             (1..=1000).contains(&limit),

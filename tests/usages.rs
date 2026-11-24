@@ -18,6 +18,9 @@ use tempfile::tempdir;
 const REMOVED: &str = "scip-typescript npm @ripplemap/library 1.0.0 src/`index.ts`/removed().";
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
+/**
+ * Locate a checked-in semantic fixture relative to the Cargo package.
+ */
 fn fixture(package: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fixtures/semantic")
@@ -25,6 +28,9 @@ fn fixture(package: &str) -> PathBuf {
         .join("index.scip")
 }
 
+/**
+ * Build explicit snapshot metadata for the isolated fixture database.
+ */
 fn input(repository: &str) -> SnapshotInput {
     SnapshotInput {
         repository: repository.into(),
@@ -33,12 +39,19 @@ fn input(repository: &str) -> SnapshotInput {
     }
 }
 
+/**
+ * Encode one length-delimited Protobuf field for an intentionally constructed index.
+ */
 fn field(tag: u32, message: &impl Message, output: &mut Vec<u8>) {
     prost::encoding::encode_varint(u64::from(tag << 3 | 2), output);
     message.encode_length_delimited(output).unwrap();
 }
 
 #[test]
+/**
+ * Verify exact usages exclude other versions and names and count repositories
+ * distinctly.
+ */
 fn exact_usages_exclude_other_versions_and_names_and_count_repositories_distinctly()
 -> anyhow::Result<()> {
     let dir = tempdir()?;
@@ -137,6 +150,9 @@ fn exact_usages_exclude_other_versions_and_names_and_count_repositories_distinct
 }
 
 #[test]
+/**
+ * Verify document scopes external symbols and unknown versions are preserved.
+ */
 fn document_scopes_external_symbols_and_unknown_versions_are_preserved() -> anyhow::Result<()> {
     let dir = tempdir()?;
     let database = dir.path().join("index.sqlite3");

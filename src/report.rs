@@ -9,6 +9,9 @@ use anyhow::Result;
 
 use crate::store::Snapshot;
 
+/**
+ * Render stored snapshot metadata without changing its deterministic ordering.
+ */
 pub fn snapshots(out: &mut impl Write, snapshots: &[Snapshot], json: bool) -> Result<()> {
     if json {
         serde_json::to_writer_pretty(&mut *out, snapshots)?;
@@ -35,6 +38,9 @@ pub fn snapshots(out: &mut impl Write, snapshots: &[Snapshot], json: bool) -> Re
     Ok(())
 }
 
+/**
+ * Render exact reference totals, displayed locations, and coverage limitations.
+ */
 pub fn usages(out: &mut impl Write, report: &crate::impact::UsageReport, json: bool) -> Result<()> {
     if json {
         serde_json::to_writer_pretty(&mut *out, report)?;

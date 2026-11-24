@@ -1,19 +1,14 @@
+mod process;
+
 use super::{Compiler, CompilerEvidence, Diagnostic, Report, Status};
 use crate::{
     dependencies::DependencyReport,
     npm,
     repository::{Repository, Revision},
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use serde::Deserialize;
 use serde_json::json;
-use std::{
-    io::{Read, Seek, Write},
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
-use tempfile::NamedTempFile;
 
 #[derive(Deserialize)]
 struct Output {
@@ -33,6 +28,9 @@ struct CompilerDiagnostic {
     message: String,
 }
 
+/**
+ * Initialize compiler evidence and convert execution errors into health diagnostics.
+ */
 pub(super) fn check(
     repository: &Repository,
     revision: &Revision,
@@ -62,6 +60,9 @@ pub(super) fn check(
     }
 }
 
+/**
+ * Coordinate checkout readiness, bounded helper execution, and result interpretation.
+ */
 fn execute(
     repository: &Repository,
     revision: &Revision,
@@ -69,9 +70,34 @@ fn execute(
     settings: &Compiler,
     report: &mut Report,
 ) -> Result<()> {
+    let Some(input) = prepare_input(repository, revision, saved, report)? else {
+        return Ok(());
+    };
+    let output = process::invoke(settings, &input, report.compiler.as_mut().unwrap())?;
+    if !revision.clean_checkout()? {
+        report.diagnostics.push(Diagnostic::new(
+            "typescript_compiler",
+            "checkout_changed",
+            Status::Unknown,
+            "Checkout changed during compiler validation; retry",
+        ));
+        return Ok(());
+    }
+    apply_output(output, report)
+}
+
+/**
+ * Require the exact clean checkout and construct explicit locked package inputs.
+ */
+fn prepare_input(
+    repository: &Repository,
+    revision: &Revision,
+    saved: &DependencyReport,
+    report: &mut Report,
+) -> Result<Option<serde_json::Value>> {
     if !revision.clean_checkout()? {
         report.diagnostics.push(Diagnostic::new("typescript_compiler", "checkout_not_exact", Status::Unknown, "Compiler requires a clean checkout at the explicitly requested commit; no compiler was run"));
-        return Ok(());
+        return Ok(None);
     }
     let lockfile =
         saved.evidence.files.iter().find(|f| {
@@ -84,7 +110,7 @@ fn execute(
             Status::Unknown,
             "Compiler package-consistency evidence requires a supported lockfile",
         ));
-        return Ok(());
+        return Ok(None);
     };
     let lock_root = revision.root().join(
         std::path::Path::new(&lockfile.path)
@@ -92,16 +118,14 @@ fn execute(
             .unwrap_or(std::path::Path::new("")),
     );
     let input = json!({ "project": repository.path.canonicalize()?, "lock_root": lock_root, "packages": saved.evidence.packages });
-    let output = invoke(settings, &input, report.compiler.as_mut().unwrap())?;
-    if !revision.clean_checkout()? {
-        report.diagnostics.push(Diagnostic::new(
-            "typescript_compiler",
-            "checkout_changed",
-            Status::Unknown,
-            "Checkout changed during compiler validation; retry",
-        ));
-        return Ok(());
-    }
+    Ok(Some(input))
+}
+
+/**
+ * Validate compiler evidence and record completed checks, errors, or unsupported
+ * inputs.
+ */
+fn apply_output(output: Output, report: &mut Report) -> Result<()> {
     let compiler = report.compiler.as_mut().unwrap();
     compiler.typescript_version = Some(output.typescript_version.clone());
     compiler.files = output.files;
@@ -134,23 +158,9 @@ fn execute(
                 output.message,
             ));
         }
-        for diagnostic in output.diagnostics {
-            let missing_export = matches!(diagnostic.code, 2305 | 2724);
-            let mut result = Diagnostic::new(
-                if missing_export {
-                    "missing_exports"
-                } else {
-                    "typescript_compiler"
-                },
-                &format!("TS{}", diagnostic.code),
-                Status::Incompatible,
-                diagnostic.message,
-            );
-            result.dependency = diagnostic.dependency;
-            result.path = diagnostic.path;
-            result.start = diagnostic.start;
-            report.diagnostics.push(result);
-        }
+        report
+            .diagnostics
+            .extend(output.diagnostics.into_iter().map(compiler_diagnostic));
         if compiler.diagnostics_total > 1000 {
             report.diagnostics.push(Diagnostic::new(
                 "typescript_compiler",
@@ -163,61 +173,23 @@ fn execute(
     Ok(())
 }
 
-fn invoke(
-    settings: &Compiler,
-    input: &serde_json::Value,
-    evidence: &mut CompilerEvidence,
-) -> Result<Output> {
-    let mut stdout = NamedTempFile::new()?;
-    let mut stderr = NamedTempFile::new()?;
-    // Files avoid pipe deadlocks when a helper emits diagnostics before consuming input.
-    let mut stdin = NamedTempFile::new()?;
-    serde_json::to_writer(stdin.as_file_mut(), input)?;
-    stdin.as_file_mut().flush()?;
-    stdin.as_file_mut().rewind()?;
-    let mut child = Command::new(&settings.node)
-        .arg(&settings.helper)
-        .stdin(stdin.as_file().try_clone()?)
-        .stdout(Stdio::from(stdout.as_file().try_clone()?))
-        .stderr(Stdio::from(stderr.as_file().try_clone()?))
-        .spawn()
-        .context("start explicitly enabled TypeScript helper")?;
-    let started = Instant::now();
-    let waited = (|| -> Result<_> {
-        loop {
-            if let Some(status) = child.try_wait()? {
-                return Ok(status);
-            }
-            ensure!(
-                started.elapsed() <= Duration::from_secs(u64::from(settings.timeout_seconds))
-                    && stdout.as_file().metadata()?.len() <= 8 * 1024 * 1024
-                    && stderr.as_file().metadata()?.len() <= 65536,
-                "compiler exceeded timeout or output limit"
-            );
-            thread::sleep(Duration::from_millis(20));
-        }
-    })();
-    let status = match waited {
-        Ok(status) => status,
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(error);
-        }
-    };
-    evidence.exit_code = status.code();
-    ensure!(
-        stdout.as_file().metadata()?.len() <= 8 * 1024 * 1024
-            && stderr.as_file().metadata()?.len() <= 65536,
-        "compiler output exceeds limit"
+/**
+ * Convert one TypeScript error into a source-linked health diagnostic.
+ */
+fn compiler_diagnostic(diagnostic: CompilerDiagnostic) -> Diagnostic {
+    let missing_export = matches!(diagnostic.code, 2305 | 2724);
+    let mut result = Diagnostic::new(
+        if missing_export {
+            "missing_exports"
+        } else {
+            "typescript_compiler"
+        },
+        &format!("TS{}", diagnostic.code),
+        Status::Incompatible,
+        diagnostic.message,
     );
-    stdout.as_file_mut().rewind()?;
-    stderr.as_file_mut().rewind()?;
-    let mut error = String::new();
-    stderr.read_to_string(&mut error)?;
-    ensure!(
-        status.success(),
-        "compiler helper failed ({status}): {error}"
-    );
-    serde_json::from_reader(stdout.as_file_mut()).context("decode TypeScript helper result")
+    result.dependency = diagnostic.dependency;
+    result.path = diagnostic.path;
+    result.start = diagnostic.start;
+    result
 }
