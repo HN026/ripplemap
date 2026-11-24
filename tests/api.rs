@@ -331,3 +331,269 @@ fn api_cli_reports_versioned_evidence_without_node_or_index_generation() -> anyh
     assert!(output.stdout.is_empty());
     Ok(())
 }
+
+#[test]
+fn public_api_comparison_classifies_only_supported_changes() -> anyhow::Result<()> {
+    use ripplemap::{
+        analysis::{self, ChangeKind},
+        api::Signature,
+    };
+    let (_directory, store, apis, _consumers) = setup()?;
+    api::validate(&store, &apis[0])?;
+    api::validate(&store, &apis[1])?;
+    let compared = analysis::compare(&apis[0], &apis[1])?;
+    assert_eq!(compared.changes.len(), 1);
+    assert_eq!(compared.changes[0].export, "legacy");
+    assert_eq!(compared.changes[0].kind, ChangeKind::RemovedExport);
+    assert_eq!(compared.changes[0].reference_status, Status::Resolved);
+    assert_eq!(compared.retained_exports, ["kept", "retained"]);
+    assert_eq!(compared.issues[0].export, "unsupportedValue");
+    assert!(analysis::compare(&apis[0], &apis[0])?.changes.is_empty());
+    let mut changed = apis[0].clone();
+    changed
+        .evidence
+        .exports
+        .iter_mut()
+        .find(|e| e.name == "legacy")
+        .unwrap()
+        .signature = Some(Signature {
+        required_parameters: 2,
+    });
+    let mut baseline = apis[0].clone();
+    baseline
+        .evidence
+        .exports
+        .iter_mut()
+        .find(|e| e.name == "legacy")
+        .unwrap()
+        .signature = Some(Signature {
+        required_parameters: 1,
+    });
+    assert_eq!(
+        analysis::compare(&baseline, &changed)?.changes[0].kind,
+        ChangeKind::RequiredParametersAdded
+    );
+    // A surviving alias shares the removed binding's identity: references remain candidates.
+    changed.evidence.exports.retain(|e| e.name != "kept");
+    changed.mappings.retain(|m| m.name != "kept");
+    let result = analysis::compare(&baseline, &changed)?;
+    assert_eq!(result.changes[0].export, "kept");
+    assert_eq!(result.changes[0].reference_status, Status::Ambiguous);
+    assert_eq!(result.changes[0].reference_candidates, ["kept", "retained"]);
+    changed.evidence.package.name = "other".into();
+    assert!(analysis::compare(&baseline, &changed).is_err());
+    Ok(())
+}
+
+#[test]
+fn analysis_records_exact_inputs_counts_coverage_and_survives_reimports() -> anyhow::Result<()> {
+    use ripplemap::analysis::{self, Consumer, ConsumerManifest, Options};
+    let (directory, mut store, apis, consumers) = setup()?;
+    let second = store.ingest(
+        &fixture("consumer-v1/index.scip"),
+        &input("another", &consumers[0].commit),
+    )?;
+    let manifest = ConsumerManifest {
+        schema_version: 1,
+        consumers: vec![
+            Consumer {
+                repository: "missing".into(),
+                commit: "e".repeat(40),
+            },
+            Consumer {
+                repository: second.repository.clone(),
+                commit: second.commit.clone(),
+            },
+            Consumer {
+                repository: consumers[1].repository.clone(),
+                commit: consumers[1].commit.clone(),
+            },
+        ],
+    };
+    let mut selected = manifest.clone();
+    // The manifest deliberately prohibits implicit all-commits queries.
+    selected.consumers.push(Consumer {
+        repository: "baseline".into(),
+        commit: consumers[0].commit.clone(),
+    });
+    store.ingest(
+        &fixture("consumer-v1/index.scip"),
+        &input("baseline", &consumers[0].commit),
+    )?;
+    let run = analysis::analyze(
+        &mut store,
+        apis[0].clone(),
+        apis[1].clone(),
+        selected,
+        Options {
+            limit: 1,
+            max_index_age_days: 0,
+        },
+    )?;
+    assert_eq!(run.exit_code(), 3);
+    assert_eq!(run.report.observed_repositories, 2);
+    assert_eq!(run.report.findings[0].observed_references, 4);
+    assert_eq!(run.report.findings[0].references.len(), 1);
+    assert!(run.report.truncated);
+    assert_eq!(
+        run.report
+            .coverage
+            .iter()
+            .find(|c| c.requested.repository == "missing")
+            .unwrap()
+            .freshness,
+        "missing_index"
+    );
+    let other_version = run
+        .report
+        .coverage
+        .iter()
+        .find(|c| c.requested.repository == "consumer")
+        .unwrap();
+    assert_eq!(other_version.observed_package_versions, ["2.0.0"]);
+    assert!(other_version.other_version_references > 0);
+    assert_eq!(run.report.coverage[0].freshness, "stale");
+    assert_eq!(store.analysis_run(run.id)?, run);
+    let mut invalid = manifest.clone();
+    invalid.consumers.push(invalid.consumers[0].clone());
+    assert!(
+        analysis::analyze(
+            &mut store,
+            apis[0].clone(),
+            apis[1].clone(),
+            invalid,
+            Options {
+                limit: 10,
+                max_index_age_days: 30
+            }
+        )
+        .is_err()
+    );
+    let unchanged = analysis::analyze(
+        &mut store,
+        apis[0].clone(),
+        apis[0].clone(),
+        manifest,
+        Options {
+            limit: 100,
+            max_index_age_days: 30,
+        },
+    )?;
+    assert!(unchanged.report.comparison.changes.is_empty());
+    assert_eq!(unchanged.report.observed_repositories, 0);
+    assert_eq!(unchanged.exit_code(), 4); // Unsupported values, missing index, and version gaps stay visible.
+    let mut alias_head = apis[0].clone();
+    alias_head.evidence.exports.retain(|e| e.name != "kept");
+    alias_head.mappings.retain(|m| m.name != "kept");
+    let aliases = analysis::analyze(
+        &mut store,
+        apis[0].clone(),
+        alias_head,
+        run.report.consumers.clone(),
+        Options {
+            limit: 100,
+            max_index_age_days: 30,
+        },
+    )?;
+    assert_eq!(aliases.report.observed_repositories, 0);
+    assert_eq!(aliases.report.candidate_repositories, 2);
+    assert_eq!(aliases.report.findings[0].observed_references, 0);
+    assert!(aliases.report.findings[0].candidate_references > 0);
+    assert_eq!(aliases.exit_code(), 4);
+    store.ingest(
+        &fixture("library-v2/source.scip"),
+        &input("source", &apis[0].producer.commit),
+    )?;
+    assert!(
+        analysis::analyze(
+            &mut store,
+            apis[0].clone(),
+            apis[1].clone(),
+            run.report.consumers.clone(),
+            Options {
+                limit: 100,
+                max_index_age_days: 30
+            }
+        )
+        .is_err()
+    );
+    assert_eq!(store.analysis_runs(100)?.len(), 3);
+    drop(store);
+    let store = Store::open_read_only(&directory.path().join("index.sqlite3"))?;
+    assert_eq!(store.analysis_run(run.id)?, run);
+    assert!(store.analysis_run(999).is_err());
+    Ok(())
+}
+
+#[test]
+fn analysis_cli_persists_json_and_distinguishes_impact_from_failure() -> anyhow::Result<()> {
+    let (directory, store, apis, consumers) = setup()?;
+    let base = directory.path().join("base.json");
+    let head = directory.path().join("head.json");
+    let selected = directory.path().join("consumers.json");
+    api::files::write(&base, &apis[0])?;
+    api::files::write(&head, &apis[1])?;
+    fs::write(
+        &selected,
+        serde_json::to_vec(
+            &serde_json::json!({"schema_version":1,"consumers":[{"repository":"consumer","commit":consumers[0].commit}]}),
+        )?,
+    )?;
+    drop(store);
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_ripplemap"))
+            .arg("--database")
+            .arg(directory.path().join("index.sqlite3"))
+            .args(args)
+            .output()
+    };
+    let args = [
+        "analyze",
+        "--base",
+        base.to_str().unwrap(),
+        "--head",
+        head.to_str().unwrap(),
+        "--consumers",
+        selected.to_str().unwrap(),
+        "--json",
+    ];
+    let output = run(&args)?;
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let result: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        result["report"]["comparison"]["changes"][0]["kind"],
+        "removed_export"
+    );
+    assert_eq!(result["report"]["observed_repositories"], 1);
+    assert_eq!(
+        result["report"]["findings"][0]["references"][1]["start"],
+        serde_json::json!({"line":4,"column":23})
+    );
+    let show = run(&["runs", "show", "--id", "1", "--json"])?;
+    assert!(show.status.success());
+    assert_eq!(show.stdout, output.stdout);
+    let terminal = run(&["runs", "show", "--id", "1"])?;
+    let terminal = String::from_utf8(terminal.stdout)?;
+    assert!(terminal.contains("Observed affected repositories: 1"));
+    assert!(terminal.contains("Zero references do not prove safety"));
+    let mut unchanged = args;
+    unchanged[4] = base.to_str().unwrap();
+    assert_eq!(run(&unchanged)?.status.code(), Some(4));
+    let mut missing = args;
+    missing[4] = "missing-head.json";
+    let failed = run(&missing)?;
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(failed.stdout.is_empty());
+    let listed = run(&["runs", "list", "--json"])?;
+    assert_eq!(
+        serde_json::from_slice::<Vec<Value>>(&listed.stdout)?.len(),
+        2
+    );
+    Ok(())
+}

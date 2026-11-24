@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use ripplemap::impact;
 
-use super::{api, dependencies, repositories};
+use super::{analyze, api, dependencies, repositories};
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "Inspect semantic references and committed npm dependency evidence"
+    about = "Analyze public API changes using semantic references and committed evidence"
 )]
 pub(super) struct Cli {
     #[arg(long, global = true, default_value = "ripplemap.sqlite3")]
@@ -19,6 +19,13 @@ pub(super) struct Cli {
 
 #[derive(Subcommand)]
 pub(super) enum Command {
+    /// Compare explicit library APIs and save observed consumer impact.
+    Analyze(analyze::Analyze),
+    /// Inspect saved analysis evidence.
+    Runs {
+        #[command(subcommand)]
+        command: analyze::Runs,
+    },
     /// Extract and resolve supported public API identities.
     Api {
         #[command(subcommand)]

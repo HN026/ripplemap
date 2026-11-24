@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, ensure};
 use rusqlite::params;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{scip, store::Store};
 
@@ -22,7 +22,7 @@ pub struct UsageReport {
     pub coverage_note: &'static str,
 }
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Usage {
     pub snapshot_id: i64,
     pub repository: String,
@@ -30,13 +30,13 @@ pub struct Usage {
     pub indexed_at: String,
     pub index_digest: String,
     pub path: String,
-    pub position_encoding: &'static str,
+    pub position_encoding: String,
     pub start: Position,
     pub end: Position,
     pub symbol_roles: i32,
 }
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Position {
     pub line: u64,
     pub column: u64,
@@ -118,7 +118,7 @@ fn lookup(
             indexed_at: row.get(3)?,
             index_digest: row.get(4)?,
             path: row.get(5)?,
-            position_encoding,
+            position_encoding: position_encoding.into(),
             start: Position {
                 line: u64::from(row.get::<_, u32>(7)?) + 1,
                 column: u64::from(row.get::<_, u32>(8)?) + 1,

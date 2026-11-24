@@ -9,7 +9,9 @@ The Rust CLI imports pre-generated SCIP indexes into a local SQLite database.
 Use `ingest`, `snapshots`, and `usages` to import and inspect semantic evidence.
 Use `repositories` and `dependencies` to register local paths and inspect committed
 npm dependency evidence. Use `api extract`, `api resolve`, and `api bridge` to
-connect supported packaged public exports to indexed consumers.
+connect supported packaged public exports to indexed consumers. `analyze` compares
+explicit base/head API snapshots, reports observed consumer impact, and saves the
+run for later inspection with `runs`.
 Each snapshot records its repository, exact commit, successful index-generation
 time, indexer version, and SHA-256 digest. Index generation is an explicit external
 step. Ripplemap does not run an indexer during ingestion.
@@ -48,8 +50,8 @@ Memory use includes the decoded document and SQLite's bounded page cache; 8 MiB
 is an input-message limit, not a claim about peak process memory. Prepared writes
 are batched in one transaction per snapshot, without accumulating the whole index.
 Oversized fields fail with an error rather than being skipped. Database schema
-version is **2**; unsupported schema versions are rejected without migration.
-A database created by the earlier schema-1 CLI is left untouched. Select a fresh
+version is **3**; unsupported schema versions are rejected without migration.
+Databases created with schema 1 or 2 are left untouched. Select a fresh
 file with `--database`, reimport the SCIP files, and rescan dependency evidence.
 
 ## Register local repositories
@@ -342,12 +344,13 @@ coordinates are required. Values, default exports, overloads, and merged
 constructs are recorded as unsupported. External re-exports, project references,
 extended configs, path mappings, custom type roots, `typesVersions`, subpath
 exports, and complex conditional exports are outside this subset. Unsupported
-project layouts fail extraction with an explanation. No signature comparison or
-automatic removal/impact classification is performed.
+project layouts fail extraction with an explanation. The API identity commands do not classify changes; `analyze` supports the change
+types described below.
 
 API artifacts contain `producer` and `declarations` snapshot metadata, `evidence`
 (package identity, compiler version, entry points, file digests, public export
-sites), and `mappings` (statuses, explanations, raw symbols). Compiler sites are
+sites and optional minimum-argument evidence), and `mappings` (statuses,
+explanations, raw symbols). Compiler sites are
 zero-based UTF-16 ranges with exclusive ends. Displayed usages retain the
 one-based position format documented above. Treat artifacts as trusted local
 evidence, not authenticated attestations. Resolve/bridge revalidate stored index
@@ -375,6 +378,127 @@ This builds the Rust binary, imports all six real indexes, extracts committed
 APIs, resolves consumers, checks alias ambiguity and an explicit version bridge,
 and verifies that a failed extraction preserves its previous artifact. Normal
 Rust tests use checked-in compiler evidence and require no Node or indexer.
+
+## Compare library APIs and inspect consumer impact
+
+Prepare `api-base.json` and `api-head.json` with `api extract`, using their exact
+library revisions and matching source/declaration indexes. Both must describe the
+same npm package and root entry point; versions stay explicit. Select the
+**expected consumers and exact indexed commits** in a separate analysis manifest:
+
+```json
+{
+  "schema_version": 1,
+  "consumers": [
+    { "repository": "consumer", "commit": "0123456789abcdef0123456789abcdef01234567" }
+  ]
+}
+```
+
+Replace the example commit with the consumer's actual full indexed Git object ID.
+This manifest selects evidence; it does not register paths, discover repositories,
+install packages, or index anything. It supports up to 256 consumers, one commit
+per repository. Missing selected indexes are reported as `missing_index`; another
+stored commit is never substituted. Repositories outside the manifest are not
+searched, including other historical commits of a selected consumer.
+
+```sh
+ripplemap analyze --base api-base.json --head api-head.json \
+  --consumers consumers.json --limit 100 --max-index-age-days 30
+ripplemap analyze --base api-base.json --head api-head.json \
+  --consumers consumers.json --json > analysis.json
+# Use the run ID printed in the report:
+ripplemap runs show --id 1 --json
+ripplemap runs list --limit 100
+```
+
+Every successful analysis is saved in SQLite, including runs with evidence gaps
+or no supported changes. Saving verifies that the input snapshots have not changed
+during analysis. Execution failures do not create a partial run. Saved reports
+contain the full API artifacts, selected consumer commits, index digests and
+metadata, compiler-derived changes, bounded reference locations, options, analysis
+version, and evaluation time. Replacing indexes does not rewrite saved results.
+`runs show` reads the original report without requiring checkouts or rerunning the
+analysis. The run list is ordered newest first and limited explicitly.
+
+### Supported changes and matching rules
+
+- `removed_export`: a supported named function binding exists in the base public
+  exports and is absent from the explicit head public exports.
+- `required_parameters_added`: a retained supported function's minimum positional
+  argument count increased. This checks ordinary identifier parameters, accounting
+  for optional/default parameters. Rest parameters, generic functions,
+  destructuring, and explicit `this` parameters have no arity evidence. Artifacts
+  made before arity extraction remain usable for removals; missing arity evidence
+  is reported as unsupported for retained bindings.
+
+The second classification identifies a concrete API change, not a proven compiler
+failure at every reference: import occurrences and calls supplying enough arguments
+can still be reported. Parameter types, return types, overload compatibility,
+assignability, and behavior changes are unchecked. A retained binding is never
+labelled fully compatible.
+
+Consumer lookup uses **exact baseline declaration identities**, following the
+compiler-to-SCIP mapping. It does not strip versions or automatically apply a
+bridge to a different dependency version. Other-version reference counts and
+observed versions are recorded separately as deferred evidence. Versions come
+from semantic symbols, not an independently verified installation or lockfile.
+If multiple public aliases share the baseline identity, the report shows their
+names and places references under candidates, excluding them from the definite
+observed-impact counts. Repository counts are distinct across all changes;
+per-change reference counts can overlap when multiple bindings share a symbol.
+
+### Coverage, output, and exit codes
+
+The terminal report and JSON include the APIs before/after, classification,
+explanation, raw identities, observed and candidate repository counts, locations,
+consumer commits, index times/digests, missing indexes, unsupported mappings, and
+truncation. Ordering is deterministic for the same supplied evidence. Run IDs and
+evaluation times change on each run.
+
+`--limit` (1–1000) bounds **all displayed references across the run**, ordered by
+export, repository, and location. Full counts remain accurate when the display
+is truncated. Each coverage record lists up to 64 sorted observed package versions
+with a separate `versions_truncated` flag. `local_references` counts every local
+symbol reference in that consumer; these cannot be attributed specifically to
+this library. Known global import-token gaps are not filled with text matching.
+
+Freshness is the caller-supplied index-generation time compared to the recorded
+`evaluated_at`, using `--max-index-age-days` (default 30). Labels are
+`within_age_threshold`, `stale`, `future_timestamp`, or `missing_index`. This is
+an age check, not verification that a checkout, dependency lockfile, or installed
+package still matches the index. Zero references do not establish safety, even
+with every supplied consumer indexed.
+
+`analyze --json` produces `{ "id": ..., "report": ... }`. The report contains
+`format_version` (currently 1), `analysis_version`, `evaluated_at`, `options`,
+full `base`/`head` API artifacts, normalized `consumers`, `coverage`, `comparison`
+(`changes`, `issues`, `retained_exports`), `findings`, distinct
+`observed_repositories`/`candidate_repositories`, `truncated`, and `scope_notes`.
+Findings link to changes by export name and separate observed/candidate counts.
+Locations use the one-based format documented for usages. JSON is stdout only;
+errors are stderr only.
+
+| Exit | `analyze` result |
+| --- | --- |
+| 0 | No supported observed impact or recorded evidence gaps within this narrow check scope; never a safety verdict |
+| 1 | Analysis, input, storage, or output execution failed; missing base/head files or snapshots are errors |
+| 2 | Invalid command-line arguments |
+| 3 | Definite mapped baseline references were observed for a supported change; this takes precedence over evidence gaps |
+| 4 | No definite observed impact, but candidate references or evidence gaps remain (including an empty consumer selection) |
+
+Unsupported exports, missing indexes, stale/future consumer indexes, unmapped
+baseline references, and deferred other-version references count as gaps.
+`runs show`/`runs list` exit 0 when reading succeeds, regardless of a saved
+analysis's outcome. An output failure can occur after a run has been saved; inspect
+`runs list` before repeating an analysis if its output was interrupted.
+
+The reproducible CLI check also runs this workflow against the shipped packaged
+fixture and verifies exact saved-result replay:
+
+```sh
+node scripts/check-api-cli.mjs "$(git rev-parse 5bdb6b2)"
+```
 
 ## Check the Rust implementation
 

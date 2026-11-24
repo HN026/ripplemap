@@ -16,10 +16,10 @@ const binary = join(root, 'target/debug/ripplemap');
 const fixture = join(root, 'fixtures/semantic/packaged');
 const manifest = join(temporary, 'repositories.json');
 const provenance = JSON.parse(readFileSync(join(fixture, 'provenance.json'), 'utf8'));
-const run = (args, succeeds = true) => {
+const run = (args, expectedExit = 0) => {
   const result = spawnSync(binary, ['--database', join(temporary, 'index.sqlite3'), ...args], { cwd: root, encoding: 'utf8' });
   if (result.error) throw result.error;
-  assert.equal(result.status, succeeds ? 0 : 1, result.stderr);
+  assert.equal(result.status, expectedExit, result.stderr);
   return result;
 };
 const extraction = version => ['api', 'extract', '--manifest', manifest,
@@ -50,10 +50,33 @@ try {
   const before = readFileSync(join(temporary, 'api-v1.json'));
   const invalid = extraction(1);
   invalid[invalid.indexOf('--source-entry') + 1] = 'src/missing.ts';
-  const failed = run(invalid, false);
+  const failed = run(invalid, 1);
   assert.match(failed.stderr, /Missing explicit source entry/);
   assert.deepEqual(readFileSync(join(temporary, 'api-v1.json')), before);
-  console.log('API CLI acceptance passed: exact committed extraction, packaged resolution, alias ambiguity, explicit version bridge, and atomic failure preservation.');
+  const consumers = join(temporary, 'consumers.json');
+  writeFileSync(consumers, JSON.stringify({ schema_version: 1, consumers: [
+    { repository: 'consumer-v1', commit },
+    { repository: 'consumer-v2', commit },
+    { repository: 'missing-consumer', commit },
+  ] }));
+  const analyze = ['analyze', '--base', join(temporary, 'api-v1.json'), '--head', join(temporary, 'api-v2.json'), '--consumers', consumers, '--json'];
+  const analysis = run(analyze, 3);
+  const saved = JSON.parse(analysis.stdout);
+  assert.equal(saved.report.comparison.changes[0].export, 'legacy');
+  assert.equal(saved.report.comparison.changes[0].kind, 'removed_export');
+  assert.equal(saved.report.observed_repositories, 1);
+  assert.equal(saved.report.findings[0].observed_references, 2);
+  assert.equal(saved.report.coverage.find(c => c.requested.repository === 'missing-consumer').freshness, 'missing_index');
+  assert.ok(saved.report.coverage.find(c => c.requested.repository === 'consumer-v2').other_version_references > 0);
+  assert.equal(run(['runs', 'show', '--id', String(saved.id), '--json']).stdout, analysis.stdout);
+  const unchanged = [...analyze];
+  unchanged[unchanged.indexOf('--head') + 1] = join(temporary, 'api-v1.json');
+  assert.equal(JSON.parse(run(unchanged, 4).stdout).report.comparison.changes.length, 0);
+  const missingHead = [...analyze];
+  missingHead[missingHead.indexOf('--head') + 1] = join(temporary, 'missing.json');
+  assert.equal(run(missingHead, 1).stdout, '');
+  assert.equal(JSON.parse(run(['runs', 'list', '--json']).stdout).length, 2);
+  console.log('API CLI acceptance passed: committed extraction, packaged resolution, alias ambiguity, explicit version bridge, removal impact, honest coverage, saved replay, and atomic failure preservation.');
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

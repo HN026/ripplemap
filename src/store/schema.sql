@@ -51,3 +51,8 @@ CREATE TABLE dependency_evidence (
     snapshot_id INTEGER PRIMARY KEY REFERENCES snapshots(id) ON DELETE CASCADE,
     report_json TEXT NOT NULL
 );
+
+CREATE TABLE analysis_runs (
+    id INTEGER PRIMARY KEY,
+    report_json TEXT NOT NULL CHECK(json_valid(report_json))
+);

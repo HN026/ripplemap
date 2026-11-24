@@ -244,12 +244,15 @@ fn missing_and_unsupported_npm_evidence_is_explicit_and_old_databases_are_preser
     let database = temporary.path().join("old.sqlite3");
     drop(Store::open(&database)?);
     let connection = rusqlite::Connection::open(&database)?;
-    connection.pragma_update(None, "user_version", 1)?;
-    assert!(Store::open(&database).is_err());
-    assert_eq!(
-        connection.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
-        1
-    );
+    for version in [1, 2] {
+        connection.pragma_update(None, "user_version", version)?;
+        assert!(Store::open(&database).is_err());
+        assert!(Store::open_read_only(&database).is_err());
+        assert_eq!(
+            connection.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
+            version
+        );
+    }
     assert!(
         connection
             .query_row("SELECT count(*) FROM snapshots", [], |r| r.get::<_, i64>(0))

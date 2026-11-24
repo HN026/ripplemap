@@ -1,7 +1,7 @@
 use anyhow::{Result, ensure};
 use rusqlite::{Connection, Transaction};
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const APPLICATION_ID: i64 = 0x524d4150;
 
 pub(super) fn initialize(tx: &Transaction<'_>) -> Result<()> {

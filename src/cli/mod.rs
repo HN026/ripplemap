@@ -1,3 +1,4 @@
+mod analyze;
 mod api;
 mod args;
 mod dependencies;
@@ -12,9 +13,11 @@ use ripplemap::store::SnapshotInput;
 
 use args::{Cli, Command};
 
-pub fn run() -> Result<()> {
+pub fn run() -> Result<std::process::ExitCode> {
     let cli = Cli::parse();
     match cli.command {
+        Command::Analyze(args) => return analyze::run(&cli.database, args),
+        Command::Runs { command } => analyze::runs(&cli.database, command),
         Command::Api { command } => api::run(&cli.database, command),
         Command::Repositories { command } => repositories::run(command),
         Command::Dependencies { command } => dependencies::run(&cli.database, command),
@@ -38,5 +41,6 @@ pub fn run() -> Result<()> {
             limit,
         } => usages::run(&cli.database, &symbol, json, limit),
         Command::Snapshots { json } => snapshots::run(&cli.database, json),
-    }
+    }?;
+    Ok(std::process::ExitCode::SUCCESS)
 }

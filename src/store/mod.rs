@@ -1,3 +1,4 @@
+mod analyses;
 mod dependencies;
 mod documents;
 mod ingest;
@@ -9,6 +10,7 @@ use std::{path::Path, time::Duration};
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 
+pub use analyses::RunSummary;
 pub use snapshots::{Snapshot, SnapshotInput};
 
 pub struct Store {
@@ -16,7 +18,7 @@ pub struct Store {
 }
 
 impl Store {
-    /// Create an empty Ripplemap database or open schema version 2. No migrations.
+    /// Create an empty Ripplemap database or open schema version 3. No migrations.
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection =
             Connection::open(path).with_context(|| format!("open database {}", path.display()))?;
