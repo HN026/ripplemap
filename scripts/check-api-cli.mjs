@@ -16,12 +16,18 @@ const binary = join(root, 'target/debug/ripplemap');
 const fixture = join(root, 'fixtures/semantic/packaged');
 const manifest = join(temporary, 'repositories.json');
 const provenance = JSON.parse(readFileSync(join(fixture, 'provenance.json'), 'utf8'));
+/**
+ * Execute the CLI against the temporary database and require the expected exit code.
+ */
 const run = (args, expectedExit = 0) => {
   const result = spawnSync(binary, ['--database', join(temporary, 'index.sqlite3'), ...args], { cwd: root, encoding: 'utf8' });
   if (result.error) throw result.error;
   assert.equal(result.status, expectedExit, result.stderr);
   return result;
 };
+/**
+ * Build explicit API extraction arguments for one packaged fixture version.
+ */
 const extraction = version => ['api', 'extract', '--manifest', manifest,
   '--repository', `source-v${version}`, '--declarations-repository', `types-v${version}`,
   '--commit', commit, '--source-entry', 'src/index.ts', '--helper', 'scripts/extract-api.mjs',
@@ -38,6 +44,9 @@ try {
   }
   const legacy = 'scip-typescript npm @ripplemap/packaged 1.0.0 dist/`functions.d.ts`/removed().';
   const retained = 'scip-typescript npm @ripplemap/packaged 1.0.0 dist/`functions.d.ts`/retained().';
+  /**
+   * Resolve an exact declaration symbol in the explicitly selected consumer snapshot.
+   */
   const lookup = symbol => JSON.parse(run(['api', 'resolve', '--api', join(temporary, 'api-v1.json'), '--consumer-repository', 'consumer-v1', '--consumer-commit', commit, '--symbol', symbol, '--json']).stdout);
   const resolved = lookup(legacy);
   assert.equal(resolved.status, 'resolved');

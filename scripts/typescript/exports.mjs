@@ -1,6 +1,9 @@
 import path from 'node:path';
 import ts from 'typescript';
 
+/**
+ * Resolve public entry-point exports and aliases through the compiler symbol table.
+ */
 function exportsOf(program, entry) {
   const source = program.getSourceFile(entry);
   if (!source) throw new Error(`Entry point missing from program: ${entry}`);
@@ -13,6 +16,9 @@ function exportsOf(program, entry) {
   }));
 }
 
+/**
+ * Return a supported declaration identifier range within the virtual package root.
+ */
 function site(declarations, root) {
   if (declarations.length !== 1) return null;
   const declaration = declarations[0];
@@ -25,11 +31,17 @@ function site(declarations, root) {
   return { path: relative, range: [start.line, start.character, end.line, end.character] };
 }
 
+/**
+ * Extract minimum positional arity only for the explicitly supported function shape.
+ */
 function signature(declaration) {
   if (declaration.typeParameters?.length || declaration.parameters.some(p => !ts.isIdentifier(p.name) || p.name.text === 'this' || p.dotDotDotToken)) return null;
   return { required_parameters: declaration.parameters.reduce((count, p, i) => !p.questionToken && !p.initializer ? i + 1 : count, 0) };
 }
 
+/**
+ * Describe each named public export with compiler sites and supported arity evidence.
+ */
 export function publicExports(sourceProgram, sourceEntry, declarationProgram, declarationEntry, root) {
   const source = exportsOf(sourceProgram, sourceEntry);
   const declarations = exportsOf(declarationProgram, declarationEntry);

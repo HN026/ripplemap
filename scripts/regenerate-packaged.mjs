@@ -11,6 +11,9 @@ const fixture = resolve(root, 'fixtures/semantic/packaged');
 const node = resolve(root, 'node_modules/node/bin/node');
 const tsc = resolve(root, 'node_modules/typescript/bin/tsc');
 const indexer = resolve(root, 'node_modules/@sourcegraph/scip-typescript/dist/src/main.js');
+/**
+ * Execute one explicit fixture generation command with the pinned local Node toolchain.
+ */
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit', env: { ...process.env, PATH: `${dirname(node)}:${process.env.PATH}` } });
   if (result.error) throw result.error;

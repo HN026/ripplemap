@@ -6,9 +6,21 @@ import { IndexSchema } from '@scip-code/scip';
 import { extract } from './extract-api.mjs';
 
 const fixture = new URL('../fixtures/semantic/packaged/', import.meta.url);
+/**
+ * Read a checked-in packaged fixture file.
+ */
 const read = name => readFileSync(new URL(name, fixture));
+/**
+ * Decode a real checked-in SCIP index for semantic assertions.
+ */
 const index = name => fromBinary(IndexSchema, read(name));
+/**
+ * Normalize compact SCIP ranges to four explicit zero-based coordinates.
+ */
 const range = r => r.length === 3 ? [r[0], r[1], r[0], r[2]] : r;
+/**
+ * Find exact definition identities at a compiler-derived site in the fixture index.
+ */
 function definition(index, site) {
   return index.documents.find(d => d.relativePath === site.path).occurrences
     .filter(o => (o.symbolRoles & 1) !== 0 && JSON.stringify(range(o.range)) === JSON.stringify(site.range)).map(o => o.symbol);
@@ -47,7 +59,9 @@ const provenance = JSON.parse(read('provenance.json'));
 for (const [name, digest] of Object.entries(provenance.indexes)) assert.equal(createHash('sha256').update(read(name)).digest('hex'), digest);
 console.log('Packaged semantic proof passed: compiler-verified declarations, exact semantic sites, aliases, version separation, and local-token coverage limit.');
 
-// Synthetic compiler-only shapes exercise the deliberately narrow arity evidence.
+/**
+ * Extract compiler arity evidence from a small synthetic function/declaration pair.
+ */
 function signatureFor(parameters) {
   const files = {
     'package.json': JSON.stringify({ name: 'arity-fixture', version: '1.0.0', types: 'dist/index.d.ts' }),

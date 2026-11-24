@@ -1,4 +1,6 @@
-// Fixture acceptance check only; Ripplemap's implementation will be Rust.
+/**
+ * Validate the semantic foundation using the small checked-in SCIP fixture.
+ */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fromBinary } from '@bufbuild/protobuf';
@@ -12,9 +14,18 @@ const indexes = Object.fromEntries(packages.map(name => [name, fromBinary(
 const removed = 'scip-typescript npm @ripplemap/library 1.0.0 src/`index.ts`/removed().';
 const retained = 'scip-typescript npm @ripplemap/library 1.0.0 src/`index.ts`/retained().';
 const unrelated = 'scip-typescript npm @ripplemap/removed-consumer 1.0.0 src/`index.ts`/removed().';
+/**
+ * Find the producer definition selected by this semantic acceptance check.
+ */
 const definition = occurrence => (occurrence.symbolRoles & SymbolRole.Definition) !== 0;
+/**
+ * Collect exact-symbol fixture occurrences with their document locations.
+ */
 const occurrences = name => indexes[name].documents.flatMap(document =>
   document.occurrences.map(occurrence => ({ path: document.relativePath, ...occurrence })));
+/**
+ * Select non-definition occurrences for an exact semantic identity.
+ */
 const references = (name, symbol) => occurrences(name)
   .filter(occurrence => !definition(occurrence) && occurrence.symbol === symbol);
 

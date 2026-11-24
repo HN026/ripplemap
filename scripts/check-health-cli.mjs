@@ -13,21 +13,41 @@ const binary = join(root, 'target/debug/ripplemap');
 const node = join(root, 'node_modules/node/bin/node');
 const helper = join(root, 'scripts/check-typescript.mjs');
 const manifest = join(temporary, 'repositories.json');
+/**
+ * Run one acceptance command and retain stdout/stderr for an actionable failed
+ * assertion.
+ */
 function command(executable, args, cwd = root, expected = 0) {
   const result = spawnSync(executable, args, { cwd, encoding: 'utf8' });
   if (result.error) throw result.error;
   assert.equal(result.status, expected, result.stdout + result.stderr);
   return result;
 }
+/**
+ * Run temporary-fixture Git operations with an explicit non-work test identity.
+ */
 function git(args) {
   return command('git', ['-c', 'user.name=Ripplemap fixture', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], checkout).stdout.trim();
 }
+/**
+ * Commit the prepared fixture state and return its exact Git object ID.
+ */
 function commit() { git(['add', '.']); git(['commit', '-m', 'fixture']); return git(['rev-parse', 'HEAD']); }
+/**
+ * Run the built CLI with the disposable acceptance database.
+ */
 const cli = (args, expected = 0) => command(binary, ['--database', join(temporary, 'index.sqlite3'), ...args], root, expected);
+/**
+ * Import the explicit consumer revision and scan matching committed dependency
+ * evidence.
+ */
 function ingest(commit) {
   cli(['ingest', '--scip', join(checkout, 'fixtures/semantic/removed-consumer/index.scip'), '--repository', 'consumer', '--commit', commit, '--indexed-at', new Date().toISOString()]);
   cli(['dependencies', 'scan', '--manifest', manifest, '--repository', 'consumer', '--commit', commit]);
 }
+/**
+ * Run the explicitly enabled compiler profile and decode its expected health outcome.
+ */
 const health = (commit, expected = 0, extra = []) => JSON.parse(cli(['health', '--manifest', manifest, '--repository', 'consumer', '--commit', commit, ...(extra.includes('--compiler-helper') ? [] : ['--compiler-helper', helper]), ...(extra.includes('--node') ? [] : ['--node', node]), '--json', ...extra], expected).stdout);
 try {
   command('cargo', ['build', '--locked']);

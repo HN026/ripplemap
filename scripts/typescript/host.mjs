@@ -1,6 +1,10 @@
 import path from 'node:path';
 import ts from 'typescript';
 
+/**
+ * Create a compiler host limited to supplied committed inputs and trusted standard
+ * libraries.
+ */
 export function virtualProject(input) {
   const root = path.resolve('ripplemap-virtual-snapshot');
   const files = new Map();
@@ -9,7 +13,14 @@ export function virtualProject(input) {
     files.set(path.resolve(root, name), text);
   }
   const lib = path.dirname(ts.getDefaultLibFilePath({}));
+  /**
+   * Allow only standard TypeScript declaration library files in the trusted library
+   * directory.
+   */
   const isLib = name => path.dirname(name) === lib && /^lib(?:\..*)?\.d\.ts$/.test(path.basename(name));
+  /**
+   * Read virtual committed inputs or a permitted compiler standard library.
+   */
   const readFile = name => files.get(path.resolve(name)) ?? (isLib(name) ? ts.sys.readFile(name) : undefined);
   const host = {
     ...ts.createCompilerHost({}),
@@ -28,6 +39,10 @@ export function virtualProject(input) {
   return { root, files, host };
 }
 
+/**
+ * Reject compiler programs containing errors with readable flattened diagnostic
+ * messages.
+ */
 export function checkDiagnostics(program) {
   const errors = ts.getPreEmitDiagnostics(program).filter(d => d.category === ts.DiagnosticCategory.Error);
   if (errors.length) throw new Error(errors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'));
