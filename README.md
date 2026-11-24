@@ -11,7 +11,8 @@ Use `repositories` and `dependencies` to register local paths and inspect commit
 npm dependency evidence. Use `api extract`, `api resolve`, and `api bridge` to
 connect supported packaged public exports to indexed consumers. `analyze` compares
 explicit base/head API snapshots, reports observed consumer impact, and saves the
-run for later inspection with `runs`.
+run for later inspection with `runs`. `health` checks recorded repository
+compatibility within explicit dependency or TypeScript check profiles.
 Each snapshot records its repository, exact commit, successful index-generation
 time, indexer version, and SHA-256 digest. Index generation is an explicit external
 step. Ripplemap does not run an indexer during ingestion.
@@ -20,7 +21,8 @@ step. Ripplemap does not run an indexer during ingestion.
 
 Requires Rust 1.95 or later and a C compiler for bundled SQLite. Git is required
 for repository registration, dependency inspection, and tests. Node is needed only
-for TypeScript API extraction and the optional fixture tooling.
+for TypeScript API extraction, the optional compiler health profile, and fixture
+tooling.
 
 ```sh
 cargo install --path . --locked
@@ -200,7 +202,8 @@ Dependency files must be regular committed files and are capped at 32 MiB each.
 
 A resolved dependency is a lockfile fact, not proof of installed contents, version
 constraint satisfaction, peer compatibility, complete freshness, or API use.
-Source/lockfile consistency checks and compatibility status are not produced.
+These dependency inspection commands do not produce compatibility status; use
+`health` for the supported consistency and compatibility checks.
 
 ## Find exact-symbol usages
 
@@ -499,6 +502,161 @@ fixture and verifies exact saved-result replay:
 ```sh
 node scripts/check-api-cli.mjs "$(git rev-parse 5bdb6b2)"
 ```
+
+## Check repository compatibility health
+
+`health` validates a registered repository at one explicitly selected indexed
+commit. First import its SCIP index and run `dependencies scan` for that same
+repository ID and full commit. No current/default branch or latest snapshot is
+substituted.
+
+```sh
+ripplemap health --repository consumer --commit "$consumer_commit"
+ripplemap health --repository consumer --commit "$consumer_commit" --json
+```
+
+The default registered collection is `ripplemap.json`; use `--manifest PATH` to
+select another. To check a registered collection, supply an explicit selection
+using the same schema as the analysis consumer manifest:
+
+```json
+{
+  "schema_version": 1,
+  "consumers": [
+    { "repository": "consumer", "commit": "0123456789abcdef0123456789abcdef01234567" }
+  ]
+}
+```
+
+Replace the illustrative commit with the actual full indexed commit. Select
+1–256 registered repositories, one commit each:
+
+```sh
+ripplemap health --manifest ripplemap.json --selection health-inputs.json --json
+```
+
+### Health profiles and outcomes
+
+Every report names its profile and lists enabled/disabled checks. **Healthy is
+limited to that profile and recorded evidence**, not all API or runtime behavior.
+
+| Status | Meaning |
+| --- | --- |
+| `healthy` | All required, enabled checks passed for the recorded snapshot |
+| `incompatible` | A supported check found a concrete violation |
+| `unknown` | Required evidence is missing, stale, inconsistent, ambiguous, or unsupported |
+| `check_failed` | A required validation could not execute or complete |
+
+`dependencies-v1` enables:
+
+- npm version-range checks for reachable production, development, optional, and
+  peer declarations in the saved dependency graph. Named npm aliases with an
+  explicit version range are supported. Prerelease matching follows npm range
+  semantics. File/git/workspace protocols, tags, npm overrides, and unparsable
+  requirements produce Unknown rather than a guessed match.
+- Required peer compatibility using the recorded parent installation environment
+  for installed third-party packages. A package's own nested copy cannot satisfy
+  its peer. Optional dependencies/peers may be absent; if present, supported ranges
+  must still match. Missing required installation paths are concrete violations
+  only with otherwise supported, complete lockfile evidence.
+- Evidence consistency: reinspection of exact committed dependency files must
+  match saved evidence. Manifest identities/declarations are compared with locked
+  metadata. Indexed document paths must exist at the selected revision, and
+  referenced npm package identities/versions must appear in the reachable graph.
+  Missing identity/version matches are Unknown, with an example location.
+- Index age: the recorded generation timestamp must not be in the future or older
+  than `--max-index-age-days` (default 30, configurable 0–36500).
+
+This profile does not type-check source or establish that public exports exist.
+It reads committed files even if the checkout is currently dirty or at another
+revision. SCIP commit/timestamp metadata remains caller-attested: the check does
+not authenticate indexed source contents or prove complete reference coverage.
+Installed packages are not inspected by the dependency profile.
+
+Old saved dependency evidence may differ after inspection rules change. Run
+`dependencies scan` again for the exact snapshot to refresh it; health does not
+silently rewrite saved evidence. Health checks are read-only and use schema 3;
+health results are returned directly, rather than persisted as analysis runs.
+
+### Explicit TypeScript compiler validation
+
+Install the pinned tooling with `npm ci` first. To enable `typescript-v1`,
+explicitly supply the trusted helper and Node executable:
+
+```sh
+ripplemap health --repository consumer --commit "$consumer_commit" \
+  --compiler-helper scripts/check-typescript.mjs \
+  --node node_modules/node/bin/node --compiler-timeout-seconds 60 --json
+```
+
+Supplying the helper authorizes its execution. The shipped helper uses TypeScript
+6.0.3's compiler API with no emission, and does not execute project scripts,
+plugins, an indexer, or package installation. This profile adds compiler errors
+and supported missing-export diagnostics (`TS2305` and `TS2724`) to the dependency
+checks. Diagnostics include the dependency when it can be identified from the
+compiler's import/export declaration, file, one-based UTF-16 position, explanation,
+and TypeScript code. Other compiler errors remain ordinary compiler diagnostics;
+they are not automatically attributed to a dependency upgrade.
+
+The whole Git checkout must be clean, including untracked files, and its HEAD
+must equal the exact requested commit. Ignored installations are allowed. A dirty
+checkout or another HEAD produces Unknown without running the helper. Install
+dependencies yourself before checking: required package metadata must match locked
+names/versions, including workspace identities. Missing or mismatched installation
+evidence produces Unknown, never a misleading compiler pass. Matching metadata
+is not proof of package integrity.
+
+The compiler records its command, process exit code, TypeScript version, error
+count, and hashes of decoded input files. Files are checked for changes during
+validation; Git state and stored evidence are rechecked afterward. These are
+consistency checks, not filesystem isolation. TypeScript still honors source
+suppression directives. Project references, compiler plugins, `noResolve`, and
+unchecked JavaScript inputs produce Unknown. `noCheck` and library-skip options
+are disabled so they cannot turn the enabled validation into a silent pass.
+
+The helper reads at most 4096 files totaling 64 MiB, returns at most 1000 compiler
+diagnostics, and cannot emit files. Execution defaults to 60 seconds (1–300),
+with an 8 MiB stdout and 64 KiB stderr limit. Timeouts, malformed results, missing
+runtimes, and execution errors produce Check failed. The helper path itself is
+trusted executable code; these limits are not a sandbox for arbitrary helpers.
+
+### Health output and exit codes
+
+`health --json` emits `{ "format_version": 1, "status": ..., "reports": [...] }`
+for both single-repository and collection checks. Each report includes the exact
+commit/snapshot, evaluation time, profile, enabled/disabled checks, per-dependency
+resolution and status, structured diagnostics and evidence pointers, committed
+file hashes, optional compiler evidence, and truncation metadata. Repository
+ordering follows the explicit selection sorted by ID. No JSON diagnostics are
+mixed into stderr; configuration/storage errors before checks start use stderr.
+
+`--limit` (1–1000, default 100) bounds displayed diagnostics per repository, with
+an exact `diagnostics_total` and `truncated` flag. Full per-dependency statuses and
+overall status are computed before truncation. Compiler errors beyond its separate
+1000-error display cap are recorded in `compiler.diagnostics_total`. Compiler
+findings link to per-dependency statuses by package name. When multiple
+installation paths have that name, individual copies remain Unknown candidates;
+the repository still retains the concrete compiler violation. Per-dependency
+constraint results remain subject to repository-level evidence gaps such as age
+or missing source evidence.
+
+Exit 0 means Healthy within the named profile; 1 means Check failed or command
+execution failure; 2 means invalid CLI arguments; 3 means Incompatible; 4 means
+Unknown. Collection precedence is Check failed, Incompatible, Unknown, Healthy.
+All other findings remain visible, even when a higher-priority outcome determines
+the exit code. No numerical risk score or complete safety claim is produced.
+
+Run the manual compiler acceptance check after installing the pinned tooling:
+
+```sh
+node scripts/check-health-cli.mjs
+```
+
+It copies the existing small fixture into a disposable local Git repository,
+links already installed tooling, verifies a healthy compiler check, removes an
+export, checks the exact missing-export diagnostic, and checks execution failure,
+timeout, and dirty-checkout handling. It performs no installation, index generation,
+or modification to the original fixture. Normal Rust tests need no Node/indexer.
 
 ## Check the Rust implementation
 

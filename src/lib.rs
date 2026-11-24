@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod api;
 pub mod dependencies;
+pub mod health;
 pub mod impact;
 pub mod npm;
 pub mod report;

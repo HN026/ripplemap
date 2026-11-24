@@ -2,6 +2,7 @@ mod analyze;
 mod api;
 mod args;
 mod dependencies;
+mod health;
 mod ingest;
 mod repositories;
 mod snapshots;
@@ -16,6 +17,7 @@ use args::{Cli, Command};
 pub fn run() -> Result<std::process::ExitCode> {
     let cli = Cli::parse();
     match cli.command {
+        Command::Health(args) => return health::run(&cli.database, args),
         Command::Analyze(args) => return analyze::run(&cli.database, args),
         Command::Runs { command } => analyze::runs(&cli.database, command),
         Command::Api { command } => api::run(&cli.database, command),

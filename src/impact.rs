@@ -36,7 +36,7 @@ pub struct Usage {
     pub symbol_roles: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Position {
     pub line: u64,
     pub column: u64,

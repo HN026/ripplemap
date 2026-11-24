@@ -30,6 +30,22 @@ fn command(path: &Path) -> Command {
 }
 
 impl Revision {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(crate) fn clean_checkout(&self) -> Result<bool> {
+        let head = command(&self.root).args(["rev-parse", "HEAD"]).output()?;
+        let status = command(&self.root)
+            .args(["status", "--porcelain=v1", "--untracked-files=normal"])
+            .output()?;
+        ensure!(
+            head.status.success() && status.status.success(),
+            "inspect compiler checkout state"
+        );
+        Ok(String::from_utf8(head.stdout)?.trim() == self.commit && status.stdout.is_empty())
+    }
+
     pub fn check_checkout(path: &Path) -> Result<PathBuf> {
         let output = command(path)
             .args(["rev-parse", "--show-toplevel"])
