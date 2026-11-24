@@ -57,6 +57,9 @@
           0,
           30
         ]
+      },
+      "signature": {
+        "required_parameters": 1
       }
     },
     {
@@ -80,6 +83,9 @@
           0,
           30
         ]
+      },
+      "signature": {
+        "required_parameters": 1
       }
     },
     {
@@ -103,7 +109,8 @@
           1,
           37
         ]
-      }
+      },
+      "signature": null
     }
   ]
 }

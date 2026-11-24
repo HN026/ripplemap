@@ -42,6 +42,14 @@ pub struct Export {
     pub explanation: String,
     pub source: Option<Site>,
     pub declaration: Option<Site>,
+    #[serde(default)]
+    pub signature: Option<Signature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Signature {
+    pub required_parameters: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

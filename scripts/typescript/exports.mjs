@@ -25,6 +25,11 @@ function site(declarations, root) {
   return { path: relative, range: [start.line, start.character, end.line, end.character] };
 }
 
+function signature(declaration) {
+  if (declaration.typeParameters?.length || declaration.parameters.some(p => !ts.isIdentifier(p.name) || p.name.text === 'this' || p.dotDotDotToken)) return null;
+  return { required_parameters: declaration.parameters.reduce((count, p, i) => !p.questionToken && !p.initializer ? i + 1 : count, 0) };
+}
+
 export function publicExports(sourceProgram, sourceEntry, declarationProgram, declarationEntry, root) {
   const source = exportsOf(sourceProgram, sourceEntry);
   const declarations = exportsOf(declarationProgram, declarationEntry);
@@ -35,10 +40,13 @@ export function publicExports(sourceProgram, sourceEntry, declarationProgram, de
     const sourceDeclarations = source.get(name) ?? [];
     const typeDeclarations = declarations.get(name) ?? [];
     const supported = name !== 'default' && sourceDeclarations.length === 1 && typeDeclarations.length === 1 && ts.isFunctionDeclaration(sourceDeclarations[0]) && ts.isFunctionDeclaration(typeDeclarations[0]) && sourceSite !== null && declarationSite !== null;
+    const sourceSignature = supported ? signature(sourceDeclarations[0]) : null;
+    const declarationSignature = supported ? signature(typeDeclarations[0]) : null;
     return {
       name, status: supported ? 'resolved' : 'unsupported',
       explanation: supported ? 'Compiler-resolved named function export; declaration emission verified.' : 'Only single named function declarations and their in-package aliases/re-exports are supported; default exports, values, overloads, and merged declarations are excluded.',
       source: sourceSite, declaration: declarationSite,
+      signature: JSON.stringify(sourceSignature) === JSON.stringify(declarationSignature) ? sourceSignature : null,
     };
   });
 }

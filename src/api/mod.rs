@@ -6,8 +6,8 @@ mod resolve;
 
 pub use bind::{bind, validate};
 pub use model::{
-    ApiSnapshot, Bridge, Export, Extraction, FileEvidence, Mapping, Package, Resolution, Site,
-    Status,
+    ApiSnapshot, Bridge, Export, Extraction, FileEvidence, Mapping, Package, Resolution, Signature,
+    Site, Status,
 };
 pub use resolve::{bridge, resolve};
 

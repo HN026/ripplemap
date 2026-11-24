@@ -46,3 +46,18 @@ assert.equal(maps[1].has('legacy'), false);
 const provenance = JSON.parse(read('provenance.json'));
 for (const [name, digest] of Object.entries(provenance.indexes)) assert.equal(createHash('sha256').update(read(name)).digest('hex'), digest);
 console.log('Packaged semantic proof passed: compiler-verified declarations, exact semantic sites, aliases, version separation, and local-token coverage limit.');
+
+// Synthetic compiler-only shapes exercise the deliberately narrow arity evidence.
+function signatureFor(parameters) {
+  const files = {
+    'package.json': JSON.stringify({ name: 'arity-fixture', version: '1.0.0', types: 'dist/index.d.ts' }),
+    'tsconfig.json': JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', rootDir: 'src', outDir: 'dist', strict: true, types: [] } }),
+    'src/index.ts': `export function sample(${parameters.source}): number { return 1; }\n`,
+    'dist/index.d.ts': `export declare function sample(${parameters.types}): number;\n`,
+  };
+  return extract({ files, source_entry: 'src/index.ts' }).exports[0].signature;
+}
+assert.deepEqual(signatureFor({ source: 'a: number, b: number', types: 'a: number, b: number' }), { required_parameters: 2 });
+assert.deepEqual(signatureFor({ source: 'a = 1, b: number', types: 'a: number | undefined, b: number' }), { required_parameters: 2 });
+assert.deepEqual(signatureFor({ source: 'a: number, b = 1', types: 'a: number, b?: number' }), { required_parameters: 1 });
+assert.equal(signatureFor({ source: '...a: number[]', types: '...a: number[]' }), null);
