@@ -23,6 +23,8 @@ pub(super) struct Manifest {
     pub peer_dependencies_meta: BTreeMap<String, PeerMeta>,
     #[serde(default)]
     pub workspaces: Value,
+    #[serde(default)]
+    pub overrides: Value,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

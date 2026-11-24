@@ -31,6 +31,19 @@ impl Workspace {
         let root_manifest = source
             .manifest(&root_manifest_file)?
             .context("npm lockfile has no committed root package.json")?;
+        if !root_manifest.overrides.is_null()
+            && root_manifest
+                .overrides
+                .as_object()
+                .is_none_or(|o| !o.is_empty())
+        {
+            issue(
+                result,
+                "unsupported_overrides",
+                "npm overrides are not evaluated; declared version requirements may be overridden",
+                &root_manifest_file,
+            );
+        }
         let workspaces = workspace_keys(&lock, &root_manifest, &root_manifest_file, result);
         let Some(owners) = owners(
             &root,
@@ -141,11 +154,28 @@ fn load_manifests(
     lock: &Lockfile,
     result: &mut EvidenceSet,
 ) -> Result<BTreeMap<String, Manifest>> {
+    if root_manifest.name != lock.packages[""].manifest.name
+        || root_manifest.version != lock.packages[""].manifest.version
+    {
+        issue(
+            result,
+            "root_identity_mismatch",
+            "Root manifest identity differs from lockfile metadata",
+            &join(root, "package.json"),
+        );
+    }
+    check_locked_manifest(
+        &root_manifest,
+        &lock.packages[""].manifest,
+        &join(root, "package.json"),
+        result,
+    );
     let mut manifests = BTreeMap::from([(String::new(), root_manifest)]);
     for path in workspaces {
         let manifest_path = join(root, &join(path, "package.json"));
         if let Some(manifest) = source.manifest(&manifest_path)? {
             let locked = &lock.packages[path].manifest;
+            check_locked_manifest(&manifest, locked, &manifest_path, result);
             if manifest.name != locked.name || manifest.version != locked.version {
                 issue(
                     result,
@@ -165,4 +195,31 @@ fn load_manifests(
         }
     }
     Ok(manifests)
+}
+
+fn check_locked_manifest(
+    manifest: &Manifest,
+    locked: &Manifest,
+    file: &str,
+    result: &mut EvidenceSet,
+) {
+    if manifest.declarations().ne(locked.declarations())
+        || manifest.peer_dependencies.keys().any(|name| {
+            manifest
+                .peer_dependencies_meta
+                .get(name)
+                .is_some_and(|m| m.optional)
+                != locked
+                    .peer_dependencies_meta
+                    .get(name)
+                    .is_some_and(|m| m.optional)
+        })
+    {
+        issue(
+            result,
+            "manifest_lock_mismatch",
+            "Committed dependency declarations differ from the lockfile package entry; refresh lockfile evidence",
+            file,
+        );
+    }
 }

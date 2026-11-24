@@ -43,8 +43,9 @@ fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidenc
     write(&manifest_path, &manifest)?;
     let lock_path = root.join("package-lock.json");
     let mut lock: Value = serde_json::from_slice(&fs::read(&lock_path)?)?;
-    lock["packages"]["node_modules/tiny"] =
-        json!({"version":"1.5.0","dependencies":{"nested":"^2"}});
+    lock["packages"]["node_modules/tiny"] = json!({"version":"1.5.0","dependencies":{"nested":"^2"},"peerDependencies":{"peer-engine":"^2"}});
+    lock["packages"]["node_modules/peer-engine"] = json!({"version":"1.0.0"});
+    lock["packages"]["node_modules/tiny/node_modules/peer-engine"] = json!({"version":"2.0.0"});
     lock["packages"]["node_modules/nested"] = json!({"version":"9.0.0"});
     lock["packages"]["node_modules/tiny/node_modules/nested"] = json!({"version":"2.1.0"});
     lock["packages"]["node_modules/aliased"] = json!({"name":"actual","version":"1.2.3"});
@@ -64,6 +65,18 @@ fn npm_workspace_graph_resolves_versions_kinds_and_persists_exact_commit_evidenc
     };
     let report = dependencies::scan(&mut store, &repository, &commit)?;
     let evidence = &report.evidence;
+    assert!(
+        evidence
+            .issues
+            .iter()
+            .any(|i| i.code == "manifest_lock_mismatch")
+    );
+    let peer = evidence
+        .dependencies
+        .iter()
+        .find(|d| d.name == "peer-engine")
+        .unwrap();
+    assert_eq!(peer.target.as_deref(), Some("node_modules/peer-engine"));
     let direct = evidence
         .dependencies
         .iter()

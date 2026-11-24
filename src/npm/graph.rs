@@ -53,7 +53,17 @@ pub(super) fn collect(workspace: &Workspace, result: &mut EvidenceSet) {
                 workspace.owners.contains(&path),
                 evidence,
             );
-            match workspace.lock.resolve(&path, name, &workspace.workspaces) {
+            // Installed packages cannot satisfy peers from their own nested node_modules.
+            let peer_scope = if dependency.kind == Kind::Peer && !first_party {
+                path.rsplit_once("/node_modules/")
+                    .map_or("", |(parent, _)| parent)
+            } else {
+                &path
+            };
+            match workspace
+                .lock
+                .resolve(peer_scope, name, &workspace.workspaces)
+            {
                 Ok((target, locations)) => {
                     dependency.resolved_at = locations
                         .iter()
